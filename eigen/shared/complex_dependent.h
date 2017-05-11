@@ -28,7 +28,6 @@
 #include "types.h"
 #include "utils.h"
 #include "macros.h"
-#include <type_traits>
 
 //
 template<typename T, typename R> struct ComplexDependentMethods {
@@ -55,34 +54,68 @@ template<typename T, typename R> struct ComplexDependentMethods {
 																														\
 										return 1
 
-	#define EIGEN_COMPONENT_ASSIGN(METHOD)	using Real = T::Scalar::value_type;																									\
-																																												\
-											T & m = *GetT(L);																													\
-																																												\
-											if (LuaXS::IsType(L, FullName<Eigen::MatrixXi>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXi>(L, 2)->cast<Real>();					\
-											else if (LuaXS::IsType(L, FullName<Eigen::MatrixXf>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<Real>();				\
-											else if (LuaXS::IsType(L, FullName<Eigen::MatrixXd>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<Real>();				\
-											else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcf>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcf>(L, 2)->METHOD().cast<Real>();	\
-											else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcd>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcd>(L, 2)->METHOD().cast<Real>();	\
-											else luaL_error(L, "Unsupported type");																								\
-																																												\
-											return 0
+	#define EIGEN_COMPONENT_ASSIGN(METHOD, REAL_TYPE)	using Real = REAL_TYPE;																												\
+																																															\
+														T & m = *GetT(L);																													\
+																																															\
+														if (LuaXS::IsType(L, FullName<Eigen::MatrixXi>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXi>(L, 2)->cast<Real>();					\
+														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXf>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<Real>();				\
+														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXd>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXd>(L, 2)->cast<Real>();				\
+														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcf>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcf>(L, 2)->METHOD().cast<Real>();	\
+														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcd>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcd>(L, 2)->METHOD().cast<Real>();	\
+														else luaL_error(L, "Unsupported type");																								\
+																																															\
+														return 0
 
 	#define EIGEN_COMPONENT_GET_METHOD(NAME) EIGEN_REG(NAME, EIGEN_COMPONENT_GET(NAME))
-	#define EIGEN_COMPONENT_ASSIGN_METHOD(NAME) EIGEN_REG(NAME "Assign", EIGEN_COMPONENT_ASSIGN(NAME))
+	#define EIGEN_COMPONENT_ASSIGN_METHOD(NAME, REAL_TYPE) EIGEN_REG(NAME "Assign", EIGEN_COMPONENT_ASSIGN(NAME, REAL_TYPE))
 
 	//
-	template<bool = !std::is_arithmetic<T::Scalar>::value> void Add (lua_State * L)
+	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> void Add (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				EIGEN_COMPONENT_GET_METHOD(imag)
 			}, {
-				EIGEN_COMPONENT_ASSIGN_METHOD(imag)
+				EIGEN_COMPONENT_ASSIGN_METHOD(imag, T::Scalar::value_type)
 			}, {
 				EIGEN_COMPONENT_GET_METHOD(real)
 			}, {
-				EIGEN_COMPONENT_ASSIGN_METHOD(real)
+				EIGEN_COMPONENT_ASSIGN_METHOD(real, T::Scalar::value_type)
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	}
+
+	//
+	template<bool = std::is_same<T, R>::value
+#ifdef WANT_MAP
+		|| std::is_same<T, Unmapped<T>::MappedType>::value
+#endif
+	> void AddIfNormalStride (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				EIGEN_MATRIX_GET_MATRIX_METHOD(asPermutation)
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	}
+
+	template<> void AddIfNormalStride<false> (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				"asPermutation", [](lua_State * L)
+				{
+					R temp = *GetT(L);
+
+					return NewMoveRet<R>(L, temp.asPermutation());
+				}
 			},
 			{ nullptr, nullptr }
 		};
@@ -125,19 +158,7 @@ template<typename T, typename R> struct ComplexDependentMethods {
 					return NewMoveRet<R>(L, *GetT(L));
 				}
 			}, {
-				"realAssign", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-
-					if (LuaXS::IsType(L, FullName<Eigen::MatrixXi>(), 2)) m = LuaXS::UD<Eigen::MatrixXi>(L, 2)->cast<T::Scalar>();
-					else if (LuaXS::IsType(L, FullName<Eigen::MatrixXf>(), 2)) m = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<T::Scalar>();
-					else if (LuaXS::IsType(L, FullName<Eigen::MatrixXd>(), 2)) m = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<T::Scalar>();
-					else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcf>(), 2)) m = LuaXS::UD<Eigen::MatrixXcf>(L, 2)->real().cast<T::Scalar>();
-					else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcd>(), 2)) m = LuaXS::UD<Eigen::MatrixXcd>(L, 2)->real().cast<T::Scalar>();
-					else luaL_error(L, "Unsupported type");
-
-					return 0;
-				}
+				EIGEN_COMPONENT_ASSIGN_METHOD(real, T::Scalar)
 			}, {
 				EIGEN_ARRAY_METHOD(round)
 			},
@@ -145,5 +166,7 @@ template<typename T, typename R> struct ComplexDependentMethods {
 		};
 
 		luaL_register(L, nullptr, methods);
+
+		AddIfNormalStride(L);
 	}
 };

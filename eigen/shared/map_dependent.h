@@ -77,15 +77,15 @@ template<typename T, typename R> struct MapDependentMethods {
 
 				luaL_argcheck(L, mHas1 || mHas2, 1, "Must resize at least one dimension");
 
-				if (mHas1) mDim1 = luaL_checkint(L, 2);
-				if (mHas2) mDim2 = luaL_checkint(L, 3);
+				if (mHas1) mDim1 = LuaXS::Int(L, 2);
+				if (mHas2) mDim2 = LuaXS::Int(L, 3);
 			}
 		
 			else
 			{
 				CheckVector(L, mat, 1);
 
-				int a = luaL_checkint(L, 2);
+				int a = LuaXS::Int(L, 2);
 
 				if (mat.cols() == 1) mDim2 = a;
 
@@ -105,104 +105,6 @@ template<typename T, typename R> struct MapDependentMethods {
 	#define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
 
 	//
-	static bool GetEigenvectors (lua_State * L)
-	{
-		lua_settop(L, 2);	// mat, ignore?
-		lua_pushliteral(L, "no_eigenvectors");	// mat, ignore?, "no_eigenvectors"
-
-		return lua_equal(L, 2, 3) == 0;
-	}
-
-	//
-	template<bool = std::is_same<T::Scalar, int>::value, bool = !std::is_arithmetic<T::Scalar>::value> void IgnoreWhenComplex (lua_State * L) {}
-
-	//
-	template<> void IgnoreWhenComplex<false, true> (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"eigenvalues", [](lua_State * L)
-				{
-					bool bGetVectors = GetEigenvectors(L);	// mat, ignore?, "no_eigenvectors"
-
-					Eigen::ComplexEigenSolver<T> es{*GetT(L), bGetVectors};
-
-					int ret = NewMoveRet<R>(L, es.eigenvalues());	// mat, ignore?, "no_eigenvectors", values
-
-					if (bGetVectors) ret += NewMoveRet<R>(L, es.eigenvectors());// mat, ignore?, "no_eigenvectors", values, vectors
-
-					return ret;
-				}
-			},
-			{ nullptr, nullptr }
-		};
-		
-		luaL_register(L, nullptr, methods);
-	}
-
-	template<> void IgnoreWhenComplex<false, false> (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"eigenvalues", [](lua_State * L)
-				{
-					using ComplexType = Eigen::Matrix<std::complex<T::Scalar>, Eigen::Dynamic, Eigen::Dynamic>;
-					
-					bool bGetVectors = GetEigenvectors(L);	// mat, ignore?, "no_eigenvectors"
-					auto td = GetTypeData<ComplexType>(L);
-
-					luaL_argcheck(L, td, 1, "Complex matrix type unavailable for cast");
-
-					Eigen::EigenSolver<T> es{*GetT(L), bGetVectors};
-
-					ComplexType vals = es.eigenvalues(), vecs = es.eigenvectors();
-
-					lua_getref(L, td->mPushRef);// mat, ignore?, "no_eigenvectors", push_new_type
-					lua_pushlightuserdata(L, &vals);// mat, ignore?, "no_eigenvectors", push_new_type, eigenvalues_mat
-					lua_call(L, 1, 1);	// mat, ignore?, "no_eigenvectors", conv_eigenvalues_mat
-
-					if (bGetVectors)
-					{
-						lua_getref(L, td->mPushRef);// mat, ignore?, "no_eigenvectors", conv_eigenvalues_mat, push_new_type
-						lua_pushlightuserdata(L, &vecs);// mat, ignore?, "no_eigenvectors", conv_eigenvalues_mat, push_new_type, eigenvectors_mat
-						lua_call(L, 1, 1);	// mat, ignore?, "no_eigenvectors", conv_eigenvalues_mat, conv_eigenvectors_mat
-					}
-
-					return bGetVectors ? 2 : 1;
-				}
-			}, {
-				"pseudoEigenvalues", [](lua_State * L)
-				{					
-					bool bGetVectors = GetEigenvectors(L);	// mat, ignore?, "no_eigenvectors"
-
-					Eigen::EigenSolver<T> es{*GetT(L), bGetVectors};
-					int ret = NewMoveRet<R>(L, es.pseudoEigenvalueMatrix());// mat, ignore?, "no_eigenvectors", values
-
-					if (bGetVectors) ret += NewMoveRet<R>(L, es.pseudoEigenvectors());	// mat, ignore?, "no_eigenvectors", values, vecs
-
-					return ret;
-				}
-			}, {
-				"realEigenvalues", [](lua_State * L)
-				{					
-					bool bGetVectors = GetEigenvectors(L);	// mat, ignore?, "no_eigenvectors"
-
-					Eigen::EigenSolver<T> es{*GetT(L), bGetVectors};
-
-					int ret = NewMoveRet<T>(L, es.eigenvalues().real());// mat, ignore?, "no_eigenvectors", values
-
-					if (bGetVectors) ret += NewMoveRet<T>(L, es.eigenvectors().real());// mat, ignore?, "no_eigenvectors", values, vecs
-
-					return ret;
-				}
-			},
-			{ nullptr, nullptr }
-		};
-		
-		luaL_register(L, nullptr, methods);
-	}
-
-	//
 	template<> void NoMap<false> (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -217,35 +119,13 @@ template<typename T, typename R> struct MapDependentMethods {
 				EIGEN_MATRIX_RESIZE_METHOD(conservativeResize)
 			}, {
 				EIGEN_MATRIX_PAIR_VOID_METHOD(conservativeResizeLike)
-			}, {
-				"replicate", [](lua_State * L)
-				{
-					int a = luaL_checkint(L, 2);
-
-					if (lua_isstring(L, 3))
-					{
-						switch (GetReductionChoice(L, 3))
-						{
-						case eColwise:
-							return NewMoveRet<R>(L, GetT(L)->colwise().replicate(a));
-						case eRowwise:
-							return NewMoveRet<R>(L, GetT(L)->rowwise().replicate(a));
-						default:
-							luaL_argcheck(L, false, 3, "Expected column rather than reduction choice");
-
-							return 0;
-						}
-					}
-
-					else return NewMoveRet<R>(L, GetT(L)->replicate(a, luaL_checkint(L, 3)));
-				}
-			}, 
+			},
 		#ifdef WANT_MAP
 			{
 				"reshape", [](lua_State * L)
 				{
 					T & m = *GetT(L);
-					Eigen::Map<T> map{m.data(), luaL_checkint(L, 2), luaL_checkint(L, 3)};
+					Eigen::Map<T> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
 
 					return NewMoveRet<Eigen::Map<T>>(L, map);
 				}
@@ -253,7 +133,7 @@ template<typename T, typename R> struct MapDependentMethods {
 				"reshapeWithInnerStride", [](lua_State * L)
 				{
 					T & m = *GetT(L);
-					Eigen::Map<T, 0, Eigen::InnerStride<>> map{m.data(), luaL_checkint(L, 2), luaL_checkint(L, 3), luaL_checkint(L, 4)};
+					Eigen::Map<T, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
 
 					return NewMoveRet<decltype(map)>(L, map);
 				}
@@ -261,7 +141,7 @@ template<typename T, typename R> struct MapDependentMethods {
 				"reshapeWithOuterStride", [](lua_State * L)
 				{
 					T & m = *GetT(L);
-					Eigen::Map<T, 0, Eigen::OuterStride<>> map{m.data(), luaL_checkint(L, 2), luaL_checkint(L, 3), luaL_checkint(L, 4)};
+					Eigen::Map<T, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
 
 					return NewMoveRet<decltype(map)>(L, map);
 				}
@@ -284,6 +164,21 @@ template<typename T, typename R> struct MapDependentMethods {
 
 		luaL_register(L, nullptr, methods);
 
-		IgnoreWhenComplex(L);
+		//
+		AddTypeData<Eigen::BDCSVD<T>>(L);
+		AddTypeData<Eigen::ColPivHouseholderQR<T>>(L);
+		AddTypeData<Eigen::CompleteOrthogonalDecomposition<T>>(L);
+		AddTypeData<Eigen::FullPivHouseholderQR<T>>(L);
+		AddTypeData<Eigen::FullPivLU<T>>(L);
+		AddTypeData<Eigen::HouseholderQR<T>>(L);
+		AddTypeData<Eigen::JacobiSVD<T, Eigen::ColPivHouseholderQRPreconditioner>>(L);
+		AddTypeData<Eigen::JacobiSVD<T, Eigen::FullPivHouseholderQRPreconditioner>>(L);
+		AddTypeData<Eigen::JacobiSVD<T, Eigen::HouseholderQRPreconditioner>>(L);
+		AddTypeData<Eigen::JacobiSVD<T, Eigen::NoQRPreconditioner>>(L);
+		AddTypeData<Eigen::LDLT<T, Eigen::Lower>>(L);
+		AddTypeData<Eigen::LDLT<T, Eigen::Upper>>(L);
+		AddTypeData<Eigen::LLT<T, Eigen::Lower>>(L);
+		AddTypeData<Eigen::LLT<T, Eigen::Lower>>(L);
+		AddTypeData<Eigen::PartialPivLU<T>>(L);
 	}
 };

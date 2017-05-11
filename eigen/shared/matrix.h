@@ -69,30 +69,3 @@ template<typename T, typename R> struct AttachMethods {
 		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ..., select, ref = push }
 	}
 };
-
-/*
-		mm.asDiagonal();
-		mm.asPermutation();
-
-		mm.bdcSvd(0);
-
-		mm.colPivHouseholderQr();
-		mm.completeOrthogonalDecomposition();
-
-		mm.fullPivHouseholderQr();
-		mm.fullPivLu();
-
-		mm.jacobiSvd(0);
-
-		mm.normalize();
-		mm.normalized();
-
-		mm.partialPivLu();
-
-	//	mm.selfadjointView();
-//		mm.stableNorm();
-		mm.stableNormalize();
-		mm.stableNormalized();
-
-	//	mm.triangularView();
-*/

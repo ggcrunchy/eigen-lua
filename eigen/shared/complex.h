@@ -25,6 +25,7 @@
 
 #include "CoronaLua.h"
 #include "utils/LuaEx.h"
+#include "ByteReader.h"
 #include <complex>
 
 //
@@ -48,9 +49,15 @@ template<typename T> static std::complex<T> Complex (lua_State * L, int arg)
 			return std::complex<T>{static_cast<T>(r), static_cast<T>(i)};
 		}
 	default:
-		luaL_argcheck(L, false, arg, "Invalid complex number");
+		ByteReader reader{L, arg};
 
-		return std::complex<T>{static_cast<T>(0), static_cast<T>(0)};
+		luaL_argcheck(L, reader.mBytes && reader.mCount >= sizeof(std::complex<T>), arg, "Invalid complex number");
+
+		std::complex<T> comp;
+
+		memcpy(&comp, reader.mBytes, sizeof(std::complex<T>));
+
+		return comp;
 	}
 }
 

@@ -24,6 +24,7 @@
     <ClInclude Include="..\shared\matrix.h" />
     <ClInclude Include="..\shared\complex_dependent.h" />
     <ClInclude Include="..\shared\non_int.h" />
+    <ClInclude Include="..\shared\solvers.h" />
     <ClInclude Include="..\shared\types.h" />
     <ClInclude Include="..\shared\utils.h" />
   </ItemGroup>

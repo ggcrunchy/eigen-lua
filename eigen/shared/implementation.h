@@ -43,7 +43,7 @@ static ThreadXS::TLS<lua_State *> tls_LuaState;
 #include <type_traits>
 
 //
-template<typename M> static void AddType (lua_State * L, void * key)
+template<typename M> static void AddType (lua_State * L)
 {
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_newtable(L);// eigen, module
@@ -54,33 +54,33 @@ template<typename M> static void AddType (lua_State * L, void * key)
 		{
 			"Constant", [](lua_State * L)
 			{
-				int m = luaL_checkint(L, 1), n = luaL_optint(L, 2, m);
+				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
 				return NewMoveRet<M>(L, M::Constant(m, n, ArgObject<M>{}.AsScalar(L, 3)));	// m[, n], v, k
 			}
 		}, {
 			"Identity", [](lua_State * L)
 			{
-				int m = luaL_checkint(L, 1), n = luaL_optint(L, 2, m);
+				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
 				return NewMoveRet<M>(L, M::Identity(m, n));	// m[, n], id
 			}
 		}, {
 			"LinSpaced", [](lua_State * L)
 			{
-				return NewMoveRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Do<>(L, luaL_checkint(L, 1)));
+				return NewMoveRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Do<>(L, LuaXS::Int(L, 1)));
 			}
 		}, {
 			"LinSpacedRow", [](lua_State * L)
 			{
-				return NewMoveRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Do<>(L, luaL_checkint(L, 1)));
+				return NewMoveRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Do<>(L, LuaXS::Int(L, 1)));
 			}
 		}, {
 			"Matrix", [](lua_State * L)
 			{
 				if (!lua_isnoneornil(L, 1))
 				{
-					int m = luaL_checkint(L, 1), n = luaL_optint(L, 2, m);
+					int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
 					New<M>(L, m, n);// m[, n], M
 				}
@@ -92,21 +92,21 @@ template<typename M> static void AddType (lua_State * L, void * key)
 		}, {
 			"Ones", [](lua_State * L)
 			{
-				int m = luaL_checkint(L, 1), n = luaL_optint(L, 2, m);
+				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
 				return NewMoveRet<M>(L, M::Ones(m, n));// m[, n], m1
 			}
 		}, {
 			"Random", [](lua_State * L)
 			{
-				int m = luaL_checkint(L, 1), n = luaL_optint(L, 2, m);
+				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
 				return NewMoveRet<M>(L, M::Random(m, n));	// m[, n], r
 			}
 		}, {
 			"RandomPermutation", [](lua_State * L)
 			{
-				Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm{luaL_checkint(L, 1)};
+				Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm{LuaXS::Int(L, 1)};
 
 				perm.setIdentity();
 
@@ -117,21 +117,21 @@ template<typename M> static void AddType (lua_State * L, void * key)
 		}, {
 			"RowVector", [](lua_State * L)
 			{
-				New<M>(L, 1, luaL_checkint(L, 1));	// size, rv
+				New<M>(L, 1, LuaXS::Int(L, 1));	// size, rv
 
 				return 1;
 			}
 		}, {
 			"Vector", [](lua_State * L)
 			{
-				New<M>(L, luaL_checkint(L, 1), 1);	// size, v
+				New<M>(L, LuaXS::Int(L, 1), 1);	// size, v
 
 				return 1;
 			}
 		}, {
 			"Zero", [](lua_State * L)
 			{
-				int m = luaL_checkint(L, 1), n = luaL_optint(L, 2, m);
+				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
 				return NewMoveRet<M>(L, M::Zero(m, n));// m[, n], m0
 			}
@@ -146,12 +146,12 @@ template<typename M> static void AddType (lua_State * L, void * key)
 		lua_setfield(L, -2, ScalarName<M::Scalar>{}.Get());	// eigen = { ..., name = funcs }
 	#endif
 
-	AddTypeData<M>(L, key);
+	AddTypeData<M>(L);
 
 	#if defined(WANT_MAP)
-		AddTypeData<Unmapped<M>::MappedType>(L, key);
-		AddTypeData<Unmapped<M>::MappedTypeWithInnerStride>(L, key);
-		AddTypeData<Unmapped<M>::MappedTypeWithOuterStride>(L, key);
+		AddTypeData<Unmapped<M>::MappedType>(L);
+		AddTypeData<Unmapped<M>::MappedTypeWithInnerStride>(L);
+		AddTypeData<Unmapped<M>::MappedTypeWithOuterStride>(L);
 	#endif
 }
 
@@ -162,7 +162,7 @@ template<typename M> static void AddType (lua_State * L, void * key)
 CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 {
 	tls_LuaState = L;
-	
+
 	//
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_getglobal(L, "require");// ... require
@@ -194,9 +194,9 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 	#endif
 
 	//
-	auto td = GetTypeData<BoolMatrix>(L);
-
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
+		auto td = GetTypeData<BoolMatrix>(L);
+
 		lua_pushcfunction(L, [](lua_State * L)
 		{
 			return NewMoveRet<BoolMatrix>(L, *LuaXS::UD<BoolMatrix>(L, 1));
@@ -206,23 +206,23 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 	#endif
 
 #ifdef WANT_INT
-	AddType<Eigen::MatrixXi>(L, td);
+	AddType<Eigen::MatrixXi>(L);
 #endif
 
 #ifdef WANT_FLOAT
-	AddType<Eigen::MatrixXf>(L, td);
+	AddType<Eigen::MatrixXf>(L);
 #endif
 
 #ifdef WANT_DOUBLE
-	AddType<Eigen::MatrixXd>(L, td);
+	AddType<Eigen::MatrixXd>(L);
 #endif
 
 #ifdef WANT_CFLOAT
-	AddType<Eigen::MatrixXcf>(L, td);
+	AddType<Eigen::MatrixXcf>(L);
 #endif
 
 #ifdef WANT_CDOUBLE
-	AddType<Eigen::MatrixXcd>(L, td);
+	AddType<Eigen::MatrixXcd>(L);
 #endif
 
 	return 1;

@@ -39,11 +39,19 @@ inline ReductionOption GetReductionChoice (lua_State * L, int arg)
 }
 
 //
+inline int SelfForChaining (lua_State * L)
+{
+	lua_pushvalue(L, 1);// self, ..., self
+
+	return 1;
+}
+
+//
 template<typename T> struct ArgObject {
 	T * mMat{nullptr};
 	typename T::Scalar mScalar; // complex numbers preclude easy inclusion in union, so don't bother
 
-	template<bool = !std::is_integral<T::Scalar>::value && !std::is_floating_point<T::Scalar>::value> typename T::Scalar AsScalar (lua_State * L, int arg)
+	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> typename T::Scalar AsScalar (lua_State * L, int arg)
 	{
 		return Complex<Eigen::NumTraits<T::Scalar>::Real>(L, arg);
 	}
@@ -67,7 +75,7 @@ template<typename T> struct ArgObject {
 template<typename T, int R, int C> struct LinSpacing {
 	using V = Eigen::Matrix<typename T::Scalar, R, C>;
 
-	template<bool = std::is_arithmetic<T::Scalar>::value> static V Do (lua_State * L, int n)
+	template<bool = !Eigen::NumTraits<T::Scalar>::IsComplex> static V Do (lua_State * L, int n)
 	{
 		return V::LinSpaced(n, ArgObject<T>{}.AsScalar(L, 2), ArgObject<T>{}.AsScalar(L, 3));
 	}

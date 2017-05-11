@@ -24,6 +24,7 @@
       <Filter>methods</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\implementation.h" />
+    <ClInclude Include="..\shared\solvers.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="methods">

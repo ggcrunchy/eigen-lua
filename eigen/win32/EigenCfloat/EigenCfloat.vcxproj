@@ -28,7 +28,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v120_xp</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -70,7 +70,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;EIGENCFLOAT_EXPORTS;%(PreprocessorDefinitions);EIGEN_CFLOAT_ONLY</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;EIGENCFLOAT_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(CORONA_ENTERPRISE)/Corona/shared/include/Corona;$(CORONA_ENTERPRISE)/Corona/shared/include/lua;$(SolutionDir)../../ByteReader;$(SolutionDir)../../corona_enterprise_utils;$(SolutionDir)../../math_libraries/eigen;$(SolutionDir)../../pthreads</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>

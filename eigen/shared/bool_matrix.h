@@ -70,20 +70,30 @@ template<> struct AttachMethods<BoolMatrix> {
 					}
 				}
 			}, {
+				"band", [](lua_State * L)
+				{
+					return NewMoveRet<BoolMatrix>(L, *GetT(L) && *GetT(L, 2));
+				}
+			}, {
+				"bor", [](lua_State * L)
+				{
+					return NewMoveRet<BoolMatrix>(L, *GetT(L) || *GetT(L, 2));
+				}
+			}, {
 				"__call", [](lua_State * L)
 				{
 					BoolMatrix & m = *GetT(L);
-					int a = luaL_checkint(L, 2);
+					int a = LuaXS::Int(L, 2) - 1;
 					bool result;
 
-					if (lua_isnil(L, 3))
+					if (lua_gettop(L) == 2)
 					{
-						CheckVector(L, m, 3);
+						CheckVector(L, m, 1);
 
-						result = m.cols() == 1 ? m(a, 1) : m(1, a);
+						result = m.cols() == 1 ? m(a, 0) : m(0, a);
 					}
 
-					else result = m(a, luaL_checkint(L, 3));
+					else result = m(a, LuaXS::Int(L, 3) - 1);
 
 					return LuaXS::PushArgAndReturn(L, result);
 				}
