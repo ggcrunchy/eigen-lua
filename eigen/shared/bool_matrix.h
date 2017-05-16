@@ -31,9 +31,6 @@
 #include <Eigen/Eigen>
 
 //
-typedef Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> BoolMatrix;
-
-//
 template<> struct AttachMethods<BoolMatrix> {
 	static BoolMatrix * GetT (lua_State * L, int arg = 1)
 	{

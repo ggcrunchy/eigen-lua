@@ -39,33 +39,39 @@ template<typename T> struct Unmapped {
 	using TransType = Eigen::Transpose<Type>;
 	using ConstTransType = const Eigen::Transpose<const Type>;
 
+	//
+	using BasicType = Type;
+	using TransBasicType = TransType;
+	using ConstTransBasicType = ConstTransType;
+
 	#ifdef WANT_MAP
 		using MappedType = Eigen::Map<Type>;
-		using MappedTypeWithInnerStride = Eigen::Map<Type, 0, Eigen::InnerStride<>>;
-		using MappedTypeWithOuterStride = Eigen::Map<Type, 0, Eigen::OuterStride<>>;
+		using MappedWithInnerStrideType = Eigen::Map<Type, 0, Eigen::InnerStride<>>;
+		using MappedWithOuterStrideType = Eigen::Map<Type, 0, Eigen::OuterStride<>>;
 		using TransMappedType = Eigen::Transpose<MappedType>;
-		using TransMappedTypeWithInnerStride = Eigen::Transpose<MappedTypeWithInnerStride>;
-		using TransMappedTypeWithOuterStride = Eigen::Transpose<MappedTypeWithOuterStride>;
+		using TransMappedWithInnerStrideType = Eigen::Transpose<MappedWithInnerStrideType>;
+		using TransMappedWithOuterStrideType = Eigen::Transpose<MappedWithOuterStrideType>;
 		using ConstTransMappedType = const Eigen::Transpose<const MappedType>;
-		using ConstTransMappedTypeWithInnerStride = const Eigen::Transpose<const MappedTypeWithInnerStride>;
-		using ConstTransMappedTypeWithOuterStride = const Eigen::Transpose<const MappedTypeWithOuterStride>;
+		using ConstTransMappedWithInnerStrideType = const Eigen::Transpose<const MappedWithInnerStrideType>;
+		using ConstTransMappedWithOuterStrideType = const Eigen::Transpose<const MappedWithOuterStrideType>;
 	#endif
 
 	//
 	template<typename U> static const char * AuxSuffix (void) { return ""; }
 
 	template<> static const char * AuxSuffix<TransType> (void) { return "_transpose"; }
+	template<> static const char * AuxSuffix<ConstTransType>(void) { return "_const_transpose"; }
 
 	#ifdef WANT_MAP
 		template<> static const char * AuxSuffix<MappedType> (void) { return "_map"; }
-		template<> static const char * AuxSuffix<MappedTypeWithInnerStride> (void) { return "_map_inner_stride"; }
-		template<> static const char * AuxSuffix<MappedTypeWithOuterStride> (void) { return "_map_outer_stride"; }
+		template<> static const char * AuxSuffix<MappedWithInnerStrideType> (void) { return "_map_inner_stride"; }
+		template<> static const char * AuxSuffix<MappedWithOuterStrideType> (void) { return "_map_outer_stride"; }
 		template<> static const char * AuxSuffix<TransMappedType> (void) { return "_transposed_map"; }
-		template<> static const char * AuxSuffix<TransMappedTypeWithInnerStride> (void) { return "_transposed_map_inner_stride"; }
-		template<> static const char * AuxSuffix<TransMappedTypeWithOuterStride> (void) { return "_transposed_map_outer_stride"; }
+		template<> static const char * AuxSuffix<TransMappedWithInnerStrideType> (void) { return "_transposed_map_inner_stride"; }
+		template<> static const char * AuxSuffix<TransMappedWithOuterStrideType> (void) { return "_transposed_map_outer_stride"; }
 		template<> static const char * AuxSuffix<ConstTransMappedType>(void) { return "_const_transposed_map"; }
-		template<> static const char * AuxSuffix<ConstTransMappedTypeWithInnerStride>(void) { return "_const_transposed_map_inner_stride"; }
-		template<> static const char * AuxSuffix<ConstTransMappedTypeWithOuterStride>(void) { return "_const_transposed_map_outer_stride"; }
+		template<> static const char * AuxSuffix<ConstTransMappedWithInnerStrideType>(void) { return "_const_transposed_map_inner_stride"; }
+		template<> static const char * AuxSuffix<ConstTransMappedWithOuterStrideType>(void) { return "_const_transposed_map_outer_stride"; }
 	#endif
 
 	static const char * Suffix (void) { return AuxSuffix<T>(); }
@@ -83,18 +89,64 @@ template<> inline const char * ScalarName<double>::Get (void) { return "double";
 template<> inline const char * ScalarName<std::complex<float>>::Get (void) { return "cfloat"; }
 template<> inline const char * ScalarName<std::complex<double>>::Get (void) { return "cdouble"; }
 
+template<typename T> struct ObjectTypeID {
+	static const char * Suffix (void) { return ""; }
+};
+
+//
+#define ADD_OBJECT_TYPE_ID(TYPE, ID, NAME)	template<> struct ObjectTypeID<TYPE> {					\
+												enum { kID = ID };									\
+																									\
+												static const char * Suffix (void) { return NAME; }	\
+											}
+
+//
+template<typename T> struct AuxUnraveler { using Type = T; };
+template<typename U, int O, typename S> struct AuxUnraveler<Eigen::Map<U, O, S>> { using Type = U; };
+template<typename U, int O, typename S> struct AuxUnraveler<const Eigen::Map<U, O, S>> { using Type = U; };
+template<typename U> struct AuxUnraveler<Eigen::Transpose<U>> { using Type = typename AuxUnraveler<U>::Type; };
+template<typename U> struct AuxUnraveler<const Eigen::Transpose<U>> { using Type = typename AuxUnraveler<U>::Type; };
+template<typename OP, typename U> struct AuxUnraveler<Eigen::CwiseUnaryOp<OP, U>> { using Type = typename AuxUnraveler<U>::Type; };
+template<typename OP, typename U> struct AuxUnraveler<const Eigen::CwiseUnaryOp<OP, U>> { using Type = typename AuxUnraveler<U>::Type; };
+
 //
 template<typename T> struct Unraveler {
 	using Type = T;
 };
 
-template<typename T> struct SolverID {
-	static const char * Suffix (void) { return ""; }
-};
+//
+#define BASIC_UNRAVELER(OBJECT)	template<typename U> struct Unraveler<OBJECT<U>> { using Type = typename std::remove_const<typename AuxUnraveler<U>::Type>::type; }
+#define EXTENDED_UNRAVELER(OBJECT) template<typename U, unsigned int E> struct Unraveler<OBJECT<U, E>> { using Type = typename std::remove_const<typename AuxUnraveler<U>::Type>::type; }
+
+//
+#define WRAP2(OBJECT, T, U) OBJECT<T, U>
+
+//
+#define DO_METHOD(ENUM, BASE)	template<> void DoMethod<ENUM> (lua_State * L) { DoMethod<BASE>(L); }
+
+//
+#define TYPE_DATA_KEY_SIGNATURE "TD:"
 
 //
 template<typename T> const char * FullName (bool bTypeDataKey = false)
 {
+	/*
+	static char sName[sizeof(size_t) + sizeof(TYPE_DATA_KEY_SIGNATURE) + 2] = { TYPE_DATA_KEY_SIGNATURE }; // nul after signature, before name
+	static T * sDummyPtr;
+
+	char * name_part = &sName[sizeof(TYPE_DATA_KEY_SIGNATURE) + 1];
+
+	if (!sName[sizeof(TYPE_DATA_KEY_SIGNATURE)])	// check for aforementioned nul
+	{
+		size_t result = std::hash<T **>{}(&sDummyPtr);
+
+		memcpy(name_part, &result, sizeof(size_t));
+
+		sName[sizeof(TYPE_DATA_KEY_SIGNATURE)] = '!'; // replace aforementioned nul
+	}
+
+	return bTypeDataKey ? sName : name_part;
+	*/
 	using UT = Unraveler<T>::Type;
 
 	static std::string sNameEx;
@@ -106,11 +158,11 @@ template<typename T> const char * FullName (bool bTypeDataKey = false)
 
 	if (bTypeDataKey) sNameEx += "_TD";
 
-	sNameEx += SolverID<T>::Suffix();
+	sNameEx += ObjectTypeID<T>::Suffix();
 
 	return sNameEx.c_str();
+	
 }
-
 
 // Per-type data
 struct TypeData {
@@ -122,22 +174,29 @@ struct TypeData {
 };
 
 //
-template<typename M> void AddTypeData (lua_State * L)
+typedef Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> BoolMatrix;
+
+//
+template<typename T> static void * GetTypeKey (lua_State * L, TypeData *)
+{
+	return GetTypeData<BoolMatrix>(L);
+}
+
+template<> static void * GetTypeKey<BoolMatrix> (lua_State * L, TypeData * td)
+{
+	lua_insert(L, -2);	// ..., td, new_type
+	lua_pushlightuserdata(L, td);	// ..., td, new_type, key
+	lua_insert(L, -2);	// ..., td, key, new_type
+	lua_rawset(L, LUA_REGISTRYINDEX);	// ..., td; registry = { ..., [key] = new_type }
+
+	return td;
+}
+
+//
+template<typename M> TypeData * AddTypeData (lua_State * L)
 {
 	auto td = LuaXS::NewTyped<TypeData>(L);	// ...[, new_type], td
-	void * key;
-
-	if (std::is_same<M, BoolMatrix>::value)
-	{
-		key = td;
-
-		lua_insert(L, -2);	// ..., td, new_type
-		lua_pushlightuserdata(L, key);	// ..., td, new_type, key
-		lua_insert(L, -2);	// ..., td, key, new_type
-		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., td; registry = { ..., [key] = new_type }
-	}
-
-	key = GetTypeData<BoolMatrix>(L);
+	void * key = GetTypeKey<M>(L, td);	// ..., td
 
 	lua_setfield(L, LUA_REGISTRYINDEX, FullName<M>(true));	// ...; registry = { ..., [eigen.name] = td }
 	lua_pushlightuserdata(L, key);	// ..., key
@@ -147,7 +206,9 @@ template<typename M> void AddTypeData (lua_State * L)
 
 	td->mRemoveObjectRef = lua_ref(L, 1);	// ..., GetAnObject, RegisterObject
 	td->mRegisterObjectRef = lua_ref(L, 1);	// ..., GetAnObject
-	td->mGetAnObjectRef = lua_ref(L, 1);// ..., GetAnObject, RegisterObject, RemoveObject
+	td->mGetAnObjectRef = lua_ref(L, 1);// ...
+
+	return td;
 }
 
 //
@@ -159,12 +220,42 @@ template<typename T> static TypeData * GetTypeData (lua_State * L)
 
 	lua_pop(L, 1);	// ...
 
+	if (!td) td = AddTypeData<T>(L);
+
 	return td;
 }
 
 //
 template<typename T, typename R = Unmapped<T>::Type> struct AttachMethods;
-template<typename T, typename R = Unmapped<T>::Type> struct AttachSolverMethods;
+template<typename T, typename R> struct AttachSolverMethods;
+template<typename T, typename R> struct AttachSelfAdjointViewMethods;
+template<typename T, typename R> struct AttachTriangularViewMethods;
+template<typename T, typename R> struct AttachWrapperMethods;
+
+//
+enum ObjectTypeRange {
+	eMatrixMarker,
+	eSolverMarker = 1000,
+	eSelfAdjointViewMarker = 2000,
+	eTriangularViewMarker = 3000,
+	eXprMarker = 4000
+};
+
+//
+enum NonMatrixAttachType { eSolverType, eSelfAdjointViewType, eTriangularViewType, eXprType };
+
+//
+template<typename T> struct AttachType {
+	static const NonMatrixAttachType value = eSolverType;
+};
+
+template<typename U, unsigned int E> struct AttachType<Eigen::SelfAdjointView<U, E>> {
+	static const NonMatrixAttachType value = eSelfAdjointViewType;
+};
+
+template<typename U, unsigned int E> struct AttachType<Eigen::TriangularView<U, E>> {
+	static const NonMatrixAttachType value = eTriangularViewType;
+};
 
 //
 template<typename T> struct Attacher {
@@ -175,9 +266,29 @@ template<typename T> struct Attacher {
 		AttachMethods<T> am{L};
 	}
 
-	template<> static void Do<false> (lua_State * L)
+	template<NonMatrixAttachType> static void AuxDo (lua_State * L)
 	{
 		AttachSolverMethods<T, UT> am{L};
+	}
+
+	template<> static void AuxDo<eSelfAdjointViewType> (lua_State * L)
+	{
+		AttachSelfAdjointViewMethods<T, UT> am{L};
+	}
+
+	template<> static void AuxDo<eTriangularViewType> (lua_State * L)
+	{
+		AttachTriangularViewMethods<T, UT> am{L};
+	}
+
+	template<> static void AuxDo<eXprType> (lua_State * L)
+	{
+		AttachXprMethods<T, UT> am{L};
+	}
+
+	template<> static void Do<false> (lua_State * L)
+	{
+		AuxDo<AttachType<typename std::remove_const<T>::type>::value>(L);
 	}
 };
 

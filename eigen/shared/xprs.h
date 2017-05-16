@@ -23,47 +23,13 @@
 
 #pragma once
 
-#if defined(EIGEN_CORE)
-	#define PLUGIN_SUFFIX eigencore
-	#define PLUGIN_NAME luaopen_plugin_eigencore
-#elif defined(EIGEN_INT_ONLY)
-	#define PLUGIN_SUFFIX eigenint
-	#define PLUGIN_NAME luaopen_plugin_eigenint
+//
+template<typename T, typename R> struct AttachXprMethods {
+	ADD_INSTANCE_GETTERS()
 
-	#define WANT_INT
-	#define WANT_MAP
-#elif defined(EIGEN_FLOAT_ONLY)
-	#define PLUGIN_SUFFIX eigenfloat
-	#define PLUGIN_NAME luaopen_plugin_eigenfloat
-
-	#define WANT_FLOAT
-//	#define WANT_MAP
-#elif defined(EIGEN_DOUBLE_ONLY)
-	#define PLUGIN_SUFFIX eigendouble
-	#define PLUGIN_NAME luaopen_plugin_eigendouble
-
-	#define WANT_DOUBLE
-	#define WANT_MAP
-#elif defined(EIGEN_CFLOAT_ONLY)
-	#define PLUGIN_SUFFIX eigencfloat
-	#define PLUGIN_NAME luaopen_plugin_eigencfloat
-
-	#define WANT_CFLOAT
-//	#define WANT_MAP
-#elif defined(EIGEN_CDOUBLE_ONLY)
-	#define PLUGIN_SUFFIX eigencdouble
-	#define PLUGIN_NAME luaopen_plugin_eigencdouble
-
-	#define WANT_CDOUBLE
-	#define WANT_MAP
-#else
-	#define PLUGIN_SUFFIX eigen
-	#define PLUGIN_NAME luaopen_plugin_eigen
-
-	#define EIGEN_PLUGIN_BASIC
-	#define WANT_INT
-	#define WANT_FLOAT
-	#define WANT_DOUBLE
-	#define WANT_CFLOAT
-	#define WANT_CDOUBLE
-#endif
+	//
+	AttachXprMethods (lua_State * L)
+	{
+		// BlockXpr, ColsXpr, RowsXpr, SegmentReturnType (ColwiseReturnType, RowwiseReturnType?)
+	}
+};

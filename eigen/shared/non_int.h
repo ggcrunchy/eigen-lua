@@ -28,6 +28,8 @@
 #include "utils.h"
 #include "macros.h"
 #include "solvers.h"
+#include "self_adjoint_view.h"
+#include "triangular_view.h"
 #include <type_traits>
 
 //
@@ -254,6 +256,40 @@ template<typename T, typename R> struct NonIntMethods {
 					auto opts = WantsBool(L, "no_eigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors;
 
 					return NewMoveRet<Eigen::SelfAdjointEigenSolver<R>>(L, Eigen::SelfAdjointEigenSolver<R>{*GetT(L), opts});
+				}
+			}, {
+				"selfadjointView", [](lua_State * L)
+				{
+					const char * names[] = {"lower", "upper", nullptr};
+
+					switch (luaL_checkoption(L, 2, nullptr, names))
+					{
+					case 0:	// Lower-triangular
+						return NewMoveRet<Eigen::SelfAdjointView<T, Eigen::Lower>>(L, GetT(L)->selfadjointView<Eigen::Lower>());
+					default:// Upper-triangular
+						return NewMoveRet<Eigen::SelfAdjointView<T, Eigen::Upper>>(L, GetT(L)->selfadjointView<Eigen::Upper>());
+					}
+				}
+			}, {
+				"triangularView", [](lua_State * L)
+				{
+					const char * names[] = {"lower", "strictly_lower", "strictly_upper", "unit_lower", "unit_upper", "upper", nullptr};
+
+					switch (luaL_checkoption(L, 2, nullptr, names))
+					{
+					case 0:	// Lower-triangular
+						return NewMoveRet<Eigen::TriangularView<T, Eigen::Lower>>(L, GetT(L)->triangularView<Eigen::Lower>());
+					case 1:// Strictly lower-triangular
+						return NewMoveRet<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L, GetT(L)->triangularView<Eigen::StrictlyLower>());
+					case 2:// Strictly upper-triangular
+						return NewMoveRet<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L, GetT(L)->triangularView<Eigen::StrictlyUpper>());
+					case 3:// Upper-triangular
+						return NewMoveRet<Eigen::TriangularView<T, Eigen::UnitLower>>(L, GetT(L)->triangularView<Eigen::UnitLower>());
+					case 4:// Unit lower-triangular
+						return NewMoveRet<Eigen::TriangularView<T, Eigen::UnitUpper>>(L, GetT(L)->triangularView<Eigen::UnitUpper>());
+					default:// Unit upper-triangular
+						return NewMoveRet<Eigen::TriangularView<T, Eigen::Upper>>(L, GetT(L)->triangularView<Eigen::Upper>());
+					}
 				}
 			}, {
 				"tridiagonalization", [](lua_State * L)

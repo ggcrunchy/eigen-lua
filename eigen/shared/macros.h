@@ -106,6 +106,11 @@
 										return 0
 
 //
+#define EIGEN_MATRIX_SET_SCALAR_CHAIN(METHOD)	GetT(L)->METHOD(ArgObject<R>{}.AsScalar(L, 2));	\
+																								\
+												return SelfForChaining(L)
+
+//
 #define EIGEN_MATRIX_ASSIGN_MATRIX_COUNT(METHOD)	GetT(L)->METHOD(LuaXS::Int(L, 2)) = *GetR(L, 3);\
 																									\
 													return 0
@@ -128,12 +133,39 @@
 //
 #define EIGEN_MATRIX_PUSH_VALUE(METHOD)	return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD())
 
-
-
 //
 #define EIGEN_MATRIX_VOID(METHOD)		GetT(L)->METHOD();	\
 															\
 										return 0
+
+//
+#define EIGEN_MATRIX_CHAIN(METHOD)		GetT(L)->METHOD();			\
+																	\
+										return SelfForChaining(L)
+
+
+
+//
+#define USING_COMPLEX_TYPE() using ComplexType = Eigen::Matrix<std::complex<R::Scalar>, Eigen::Dynamic, Eigen::Dynamic>
+#define GET_COMPLEX_TYPE_DATA()	auto td = GetTypeData<ComplexType>(L);	\
+																			\
+									luaL_argcheck(L, td, 1, "Complex matrix type unavailable for cast")
+
+#define PUSH_TYPED_DATA(item)	lua_getref(L, td->mPushRef);/* solver, ..., push_new_type */		\
+									lua_pushlightuserdata(L, &item);/*solver, push_new_type, item */	\
+									lua_call(L, 1, 1);	/* solver, conv_item */							\
+																										\
+									return 1
+
+#define EIGEN_REAL_GET_COMPLEX(METHOD)	GET_COMPLEX_TYPE_DATA();			\
+																			\
+										ComplexType res = GetT(L)->METHOD();\
+																			\
+										PUSH_TYPED_DATA(res)
+
+#define EIGEN_PUSH_AUTO_RESULT(METHOD)	auto res = GetT(L)->METHOD();					\
+																						\
+											return NewMoveRet<decltype(res)>(L, res)
 
 //
 #define EIGEN_REG(NAME, CALL)		#NAME, [](lua_State * L)	\
@@ -148,6 +180,7 @@
 #define EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_PAIR_METHOD(NAME) EIGEN_REG(NAME "Assign", EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_PAIR(NAME))
 #define EIGEN_MATRIX_ASSIGN_MATRIX_INDEX_METHOD(NAME) EIGEN_REG(NAME "Assign", EIGEN_MATRIX_ASSIGN_MATRIX_INDEX(NAME))
 #define EIGEN_MATRIX_ASSIGN_MATRIX_INDEX_PAIR_METHOD(NAME) EIGEN_REG(NAME "Assign", EIGEN_MATRIX_ASSIGN_MATRIX_INDEX_PAIR(NAME))
+#define EIGEN_MATRIX_CHAIN_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_CHAIN(NAME))
 #define EIGEN_MATRIX_GET_MATRIX_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX(NAME))
 #define EIGEN_MATRIX_GET_MATRIX_COUNT_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX_COUNT(NAME))
 #define EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR(NAME))
@@ -159,6 +192,9 @@
 #define EIGEN_MATRIX_PAIR_VOID_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PAIR_VOID(NAME))
 #define EIGEN_MATRIX_PUSH_VALUE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PUSH_VALUE(NAME))
 #define EIGEN_MATRIX_REDUCE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_REDUCE(NAME))
+#define EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_SET_SCALAR_CHAIN(NAME))
 #define EIGEN_MATRIX_SET_SCALAR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_SET_SCALAR(NAME))
 #define EIGEN_MATRIX_VOID_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_VOID(NAME))
 #define EIGEN_REL_OP_METHOD(NAME, OP) EIGEN_REG(NAME, EIGEN_REL_OP(OP))
+#define EIGEN_REAL_GET_COMPLEX_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_REAL_GET_COMPLEX(NAME))
+#define EIGEN_PUSH_AUTO_RESULT_METHOD(NAME) EIGEN_REG(NAME, EIGEN_PUSH_AUTO_RESULT(NAME))

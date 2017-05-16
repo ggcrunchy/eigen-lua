@@ -47,6 +47,20 @@ inline int SelfForChaining (lua_State * L)
 }
 
 //
+inline bool WantsBool(lua_State * L, const char * str, int arg = -1)
+{
+	arg = CoronaLuaNormalize(L, arg);
+
+	lua_pushstring(L, str);	// ..., arg, ..., opt
+
+	bool bWants = lua_equal(L, arg, -1) != 0;
+
+	lua_pop(L, 1);	// ..., arg, ...
+
+	return bWants;
+}
+
+//
 template<typename T> struct ArgObject {
 	T * mMat{nullptr};
 	typename T::Scalar mScalar; // complex numbers preclude easy inclusion in union, so don't bother

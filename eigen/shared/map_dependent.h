@@ -163,22 +163,5 @@ template<typename T, typename R> struct MapDependentMethods {
 		};
 
 		luaL_register(L, nullptr, methods);
-
-		//
-		AddTypeData<Eigen::BDCSVD<T>>(L);
-		AddTypeData<Eigen::ColPivHouseholderQR<T>>(L);
-		AddTypeData<Eigen::CompleteOrthogonalDecomposition<T>>(L);
-		AddTypeData<Eigen::FullPivHouseholderQR<T>>(L);
-		AddTypeData<Eigen::FullPivLU<T>>(L);
-		AddTypeData<Eigen::HouseholderQR<T>>(L);
-		AddTypeData<Eigen::JacobiSVD<T, Eigen::ColPivHouseholderQRPreconditioner>>(L);
-		AddTypeData<Eigen::JacobiSVD<T, Eigen::FullPivHouseholderQRPreconditioner>>(L);
-		AddTypeData<Eigen::JacobiSVD<T, Eigen::HouseholderQRPreconditioner>>(L);
-		AddTypeData<Eigen::JacobiSVD<T, Eigen::NoQRPreconditioner>>(L);
-		AddTypeData<Eigen::LDLT<T, Eigen::Lower>>(L);
-		AddTypeData<Eigen::LDLT<T, Eigen::Upper>>(L);
-		AddTypeData<Eigen::LLT<T, Eigen::Lower>>(L);
-		AddTypeData<Eigen::LLT<T, Eigen::Lower>>(L);
-		AddTypeData<Eigen::PartialPivLU<T>>(L);
 	}
 };

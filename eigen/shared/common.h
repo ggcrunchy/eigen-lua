@@ -26,6 +26,7 @@
 #include "CoronaLua.h"
 #include "types.h"
 #include "utils.h"
+#include "xprs.h"
 #include "macros.h"
 #include <type_traits>
 
@@ -573,19 +574,6 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rowStride)
 			}, {
-				"selfadjointView", [](lua_State * L)
-				{
-					const char * names[] = { "lower", "upper", nullptr };
-
-					switch (luaL_checkoption(L, 2, nullptr, names))
-					{
-					case 0:	// Lower-triangular
-						return NewMoveRet<Eigen::SelfAdjointView<T, Eigen::Lower>>(L, GetT(L)->selfadjointView<Eigen::Lower>());
-					default:// Upper-triangular
-						return NewMoveRet<Eigen::SelfAdjointView<T, Eigen::Upper>>(L, GetT(L)->selfadjointView<Eigen::Upper>());
-					}
-				}
-			}, {
 				"segment", [](lua_State * L)
 				{
 					return NewMoveRet<R>(L, AsVector<T>::To(L).segment(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3)));
@@ -598,9 +586,9 @@ template<typename T, typename R> struct CommonMethods {
 					return 0;
 				}
 			}, {
-				EIGEN_MATRIX_SET_SCALAR_METHOD(setConstant)
+				EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(setConstant)
 			}, {
-				EIGEN_MATRIX_VOID_METHOD(setIdentity)
+				EIGEN_MATRIX_CHAIN_METHOD(setIdentity)
 			}, {
 				"setLinSpaced", [](lua_State * L)
 				{
@@ -611,14 +599,14 @@ template<typename T, typename R> struct CommonMethods {
 					if (m.cols() == 1) m = LinSpacing<T, Eigen::Dynamic, 1>::Do<>(L, m.rows());
 					else m = LinSpacing<T, 1, Eigen::Dynamic>::Do<>(L, m.cols());
 
-					return 0;
+					return SelfForChaining(L);
 				}
 			}, {
-				EIGEN_MATRIX_VOID_METHOD(setOnes)
+				EIGEN_MATRIX_CHAIN_METHOD(setOnes)
 			}, {
-				EIGEN_MATRIX_VOID_METHOD(setRandom)
+				EIGEN_MATRIX_CHAIN_METHOD(setRandom)
 			}, {
-				EIGEN_MATRIX_VOID_METHOD(setZero)
+				EIGEN_MATRIX_CHAIN_METHOD(setZero)
 			}, {
 				EIGEN_ARRAY_METHOD(sin)
 			}, {
@@ -629,13 +617,24 @@ template<typename T, typename R> struct CommonMethods {
 				EIGEN_ARRAY_METHOD(square)
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(squaredNorm)
-			}, /*{
-				EIGEN_MATRIX_REDUCE_METHOD(stableNorm)
 			}, {
-				EIGEN_MATRIX_VOID_METHOD(stableNormalize)
+				"stableNorm", [](lua_State * L)
+				{
+					return LuaXS::PushArgAndReturn(L, AsVector<R>::To(L).stableNorm());
+				}
 			}, {
-				EIGEN_MATRIX_GET_MATRIX_METHOD(stableNormalized)
-			}, */{
+				"stableNormalize", [](lua_State * L)
+				{
+					AsVector<R>::To(L).stableNormalize();
+
+					return 0;
+				}
+			}, {
+				"stableNormalized", [](lua_State * L)
+				{
+					return NewMoveRet<R>(L, AsVector<R>::To(L).stableNormalized());
+				}
+			}, {
 				"sub", [](lua_State * L)
 				{
 					NO_MUTATE(-);
@@ -689,27 +688,6 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_VOID_METHOD(transposeInPlace)
 			}, {
-				"triangularView", [](lua_State * L)
-				{
-					const char * names[] = { "lower", "strictly_lower", "strictly_upper", "unit_lower", "unit_upper", "upper", nullptr };
-
-					switch (luaL_checkoption(L, 2, nullptr, names))
-					{
-					case 0:	// Lower-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::Lower>>(L, GetT(L)->triangularView<Eigen::Lower>());
-					case 1:// Strictly lower-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L, GetT(L)->triangularView<Eigen::StrictlyLower>());
-					case 2:// Strictly upper-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L, GetT(L)->triangularView<Eigen::StrictlyUpper>());
-					case 3:// Upper-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::UnitLower>>(L, GetT(L)->triangularView<Eigen::UnitLower>());
-					case 4:// Unit lower-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::UnitUpper>>(L, GetT(L)->triangularView<Eigen::UnitUpper>());
-					default:// Unit upper-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::Upper>>(L, GetT(L)->triangularView<Eigen::Upper>());
-					}
-				}
-			}, {
 				"unaryExpr", [](lua_State * L)
 				{
 					return NewMoveRet<R>(L, GetT(L)->unaryExpr([L](const T::Scalar & x)
@@ -726,6 +704,11 @@ template<typename T, typename R> struct CommonMethods {
 
 						return result;
 					}));
+				}
+			}, {
+				"unitOrthogonal", [](lua_State * L)
+				{
+					return NewMoveRet<R>(L, AsVector<T>::To(L).unitOrthogonal());
 				}
 			}, {
 				"__unm", [](lua_State * L)

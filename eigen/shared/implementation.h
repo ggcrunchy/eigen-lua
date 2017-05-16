@@ -43,6 +43,33 @@ static ThreadXS::TLS<lua_State *> tls_LuaState;
 #include <type_traits>
 
 //
+template<typename M> struct AddUmeyama {
+	template<bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && !Eigen::NumTraits<typename M::Scalar>::IsComplex> void Do (lua_State * L)
+	{
+		luaL_Reg funcs[] = {
+			{
+				"Umeyama", [](lua_State * L)
+				{
+					M xform = Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "no_scaling", 3));
+
+					return NewMoveRet<M>(L, xform);	// src, dst[, no_scaling], xform
+				}
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, funcs);
+	}
+
+	template<> void Do<false> (lua_State *) {}
+
+	AddUmeyama (lua_State * L)
+	{
+		Do(L);
+	}
+};
+
+//
 template<typename M> static void AddType (lua_State * L)
 {
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
@@ -142,16 +169,10 @@ template<typename M> static void AddType (lua_State * L)
 	//
 	luaL_register(L, nullptr, funcs);
 
+	AddUmeyama<M> au{L};
+
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_setfield(L, -2, ScalarName<M::Scalar>{}.Get());	// eigen = { ..., name = funcs }
-	#endif
-
-	AddTypeData<M>(L);
-
-	#if defined(WANT_MAP)
-		AddTypeData<Unmapped<M>::MappedType>(L);
-		AddTypeData<Unmapped<M>::MappedTypeWithInnerStride>(L);
-		AddTypeData<Unmapped<M>::MappedTypeWithOuterStride>(L);
 	#endif
 }
 
@@ -189,8 +210,6 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }
-
-		// Others? (views, etc. solvers probably go in non-int)
 	#endif
 
 	//
