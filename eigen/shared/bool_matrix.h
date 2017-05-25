@@ -27,7 +27,10 @@
 #include "macros.h"
 #include "types.h"
 #include "utils.h"
+#include "xprs.h"
+#include "xpr_ops.h"
 #include "utils/LuaEx.h"
+#include <string>
 #include <Eigen/Eigen>
 
 //
@@ -39,6 +42,8 @@ template<> struct AttachMethods<BoolMatrix> {
 
 	AttachMethods (lua_State * L)
 	{
+	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
+
 		luaL_Reg methods[] = {
 			{
 				"all", [](lua_State * L)
@@ -48,9 +53,9 @@ template<> struct AttachMethods<BoolMatrix> {
 					case eDefault:
 						EIGEN_MATRIX_PUSH_VALUE(all);
 					case eColwise:
-						return NewMoveRet<BoolMatrix>(L, GetT(L)->colwise().all());
+						return NewRet<BoolMatrix>(L, GetT(L)->colwise().all());
 					default: // GetReductionChoice() will trap anything else
-						return NewMoveRet<BoolMatrix>(L, GetT(L)->rowwise().all());
+						return NewRet<BoolMatrix>(L, GetT(L)->rowwise().all());
 					}
 				}
 			}, {
@@ -61,20 +66,20 @@ template<> struct AttachMethods<BoolMatrix> {
 					case eDefault:
 						EIGEN_MATRIX_PUSH_VALUE(any);
 					case eColwise:
-						return NewMoveRet<BoolMatrix>(L, GetT(L)->colwise().any());
+						return NewRet<BoolMatrix>(L, GetT(L)->colwise().any());
 					default: // GetReductionChoice() will trap anything else
-						return NewMoveRet<BoolMatrix>(L, GetT(L)->rowwise().any());
+						return NewRet<BoolMatrix>(L, GetT(L)->rowwise().any());
 					}
 				}
 			}, {
 				"band", [](lua_State * L)
 				{
-					return NewMoveRet<BoolMatrix>(L, *GetT(L) && *GetT(L, 2));
+					return NewRet<BoolMatrix>(L, *GetT(L) && *GetT(L, 2));
 				}
 			}, {
 				"bor", [](lua_State * L)
 				{
-					return NewMoveRet<BoolMatrix>(L, *GetT(L) || *GetT(L, 2));
+					return NewRet<BoolMatrix>(L, *GetT(L) || *GetT(L, 2));
 				}
 			}, {
 				"__call", [](lua_State * L)
@@ -133,32 +138,21 @@ template<> struct AttachMethods<BoolMatrix> {
 			}, {
 				"select", [](lua_State * L)
 				{
-					const char * names[] = {
-						FullName<Eigen::MatrixXi>(),
-						FullName<Eigen::MatrixXf>(),
-						FullName<Eigen::MatrixXd>(),
-						FullName<Eigen::MatrixXcf>(),
-						FullName<Eigen::MatrixXcd>(),
-						nullptr
+					TypeData * types[] = {
+						GetTypeData<Eigen::MatrixXi>(L),
+						GetTypeData<Eigen::MatrixXf>(L),
+						GetTypeData<Eigen::MatrixXd>(L),
+						GetTypeData<Eigen::MatrixXcf>(L),
+						GetTypeData<Eigen::MatrixXcd>(L)
 					};
 
-					const char * data_keys[] = {
-						FullName<Eigen::MatrixXi>(true),
-						FullName<Eigen::MatrixXf>(true),
-						FullName<Eigen::MatrixXd>(true),
-						FullName<Eigen::MatrixXcf>(true),
-						FullName<Eigen::MatrixXcd>(true)
-					};
-
-					for (int i = 0; names[i]; ++i)
+					for (auto cur : types)
 					{
-						if (LuaXS::IsType(L, names[i], 1) || LuaXS::IsType(L, names[i], 2))
+						if (cur && (LuaXS::IsType(L, cur->GetName(), 1) || LuaXS::IsType(L, cur->GetName(), 2)))
 						{
 							lua_settop(L, 3);	// mat, then, else
-							lua_getfield(L, LUA_REGISTRYINDEX, data_keys[i]);	// mat, then, else, typed_data
-							lua_getref(L, LuaXS::UD<TypeData>(L, -1)->mSelectRef);	// mat, then, else, typed_data, select
-							lua_insert(L, 1);	// select, mat, then, else, typed_data
-							lua_pop(L, 1);	// select, mat, then, else
+							lua_getref(L, cur->mSelectRef);	// mat, then, else, select
+							lua_insert(L, 1);	// select, mat, then, else
 							lua_call(L, 3, 1);	// m
 
 							return 1;
@@ -181,5 +175,9 @@ template<> struct AttachMethods<BoolMatrix> {
 		};
 
 		luaL_register(L, nullptr, methods);
+
+		XprOps<BoolMatrix> xo{L};
+
+	#endif
 	}
 };

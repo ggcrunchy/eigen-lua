@@ -26,62 +26,10 @@
 #include "views.h"
 
 //
-EXTENDED_UNRAVELER(Eigen::TriangularView);
+template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::TriangularView<MT, UpLo>, R> {
+	using T = Eigen::TriangularView<MT, UpLo>;
 
-//
-enum {
-	eTriangularViewIDs = eTriangularViewMarker,
-
-	VIEW_ENUMS(eTV_L),	// Lower-triangular view
-	VIEW_ENUMS(eTV_SL),	// Strictly lower-triangular view
-	VIEW_ENUMS(eTV_SU),	// Strictly upper-triangular view
-	VIEW_ENUMS(eTV_U),	// Upper-triangular view
-	VIEW_ENUMS(eTV_UL),	// Unit lower-triangular view
-	VIEW_ENUMS(eTV_UU)	// Unit upper-triangular view
-};
-
-#define ADD_COMPLEX_TYPES(VIEW, ENUM, EX, T, NAME)
-
-//
-#define UNROLL_TV_UNRAVELERS(T)	UNROLL_VIEW(Eigen::TriangularView, eTV_L, Eigen::Lower, T, "_tvl");				\
-								UNROLL_VIEW(Eigen::TriangularView, eTV_SL, Eigen::StrictlyLower, T, "_tvsl");	\
-								UNROLL_VIEW(Eigen::TriangularView, eTV_SU, Eigen::StrictlyUpper, T, "_tvsu");	\
-								UNROLL_VIEW(Eigen::TriangularView, eTV_U, Eigen::Upper, T, "_tvu");				\
-								UNROLL_VIEW(Eigen::TriangularView, eTV_UL, Eigen::UnitLower, T, "_tvul");		\
-								UNROLL_VIEW(Eigen::TriangularView, eTV_UU, Eigen::UnitUpper, T, "_tvuu")
-
-//
-#ifdef WANT_FLOAT
-	UNROLL_TV_UNRAVELERS(Eigen::MatrixXf);
-#endif
-
-#ifdef WANT_DOUBLE
-	UNROLL_TV_UNRAVELERS(Eigen::MatrixXd);
-#endif
-
-
-#if defined(WANT_CFLOAT) || defined(WANT_CDOUBLE)
-	#undef ADD_COMPLEX_TYPES
-	#define ADD_COMPLEX_TYPES ADD_COMPLEX_VIEW_TYPES
-#endif
-
-//
-#ifdef WANT_CFLOAT
-	UNROLL_TV_UNRAVELERS(Eigen::MatrixXcf);
-#endif
-
-#ifdef WANT_CDOUBLE
-	UNROLL_TV_UNRAVELERS(Eigen::MatrixXcd);
-#endif
-
-#undef ADD_COMPLEX_TYPES
-
-//
-template<typename T, typename R> struct AttachTriangularViewMethods {
 	ADD_INSTANCE_GETTERS()
-
-	//
-	template<int> void DoMethod (lua_State * L) {}
 
 	//
 	template<int ModeAnded> static int GetSelfAdjointView (lua_State * L)
@@ -96,7 +44,7 @@ template<typename T, typename R> struct AttachTriangularViewMethods {
 
 	//
 	template<typename U> struct DerivedTV {
-		DerivedTV(lua_State * L)
+		DerivedTV (lua_State * L)
 		{
 			luaL_Reg methods[] = {
 				{
@@ -199,19 +147,12 @@ template<typename T, typename R> struct AttachTriangularViewMethods {
 		DerivedTV (lua_State *) {}
 	};
 
-	/***********************
-	* Lower-triangular view
-	***********************/
-	template<> void DoMethod<eTV_L> (lua_State * L)
+	//
+	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
-				"asMatrix", [](lua_State * L)
-				{
-					R matrix = *GetT(L);
-
-					return NewMoveRet<R>(L, matrix);
-				}
+				"asMatrix", AsMatrix<T, R>
 			}, {
 				"__call", [](lua_State * L)
 				{
@@ -224,6 +165,8 @@ template<typename T, typename R> struct AttachTriangularViewMethods {
 			}, /*{
 			   EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
 			}, */{
+				"__gc", LuaXS::TypedGC<T>
+			}, {
 				"__mul", [](lua_State * L)
 				{
 					return 1;	// TODO
@@ -235,14 +178,14 @@ template<typename T, typename R> struct AttachTriangularViewMethods {
 			}, {
 				"solve", [](lua_State * L)
 				{
-					if (WantsBool(L, "on_the_right")) return NewMoveRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(*GetR(L, 2)));
-					else return NewMoveRet<R>(L, GetT(L)->solve(*GetR(L, 2)));
+					if (WantsBool(L, "on_the_right")) return NewRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(GetR(L, 2)));
+					else return NewRet<R>(L, GetT(L)->solve(GetR(L, 2)));
 				}
 			}, {
-				"solveInPlace", [](lua_State * L)
+				"solveInPlace", [](lua_State * L) // todo: stumped here with TV<Transpose<Map<Matrix, 0, InnerStride>>,9>
 				{
-					if (WantsBool(L, "on_the_right")) GetT(L)->solveInPlace<Eigen::OnTheRight>(*GetR(L, 2));
-					else GetT(L)->solveInPlace(*GetR(L, 2));
+					if (WantsBool(L, "on_the_right")) GetT(L)->solveInPlace<Eigen::OnTheRight>(GetR(L, 2));
+					else GetT(L)->solveInPlace(GetR(L, 2));
 
 					return 0;
 				}
@@ -272,63 +215,17 @@ template<typename T, typename R> struct AttachTriangularViewMethods {
 
 		DerivedTV<T> derived{L};
 	}
-
-	VIEW_METHODS(eTV_L)
-
-	/********************************
-	* Strictly lower-triangular view
-	********************************/
-	template<> void DoMethod<eTV_SL> (lua_State * L)
-	{
-		DoMethod<eTV_L>(L);
-	}
-
-	VIEW_METHODS(eTV_SL)
-
-	/********************************
-	* Strictly upper-triangular view
-	********************************/
-	template<> void DoMethod<eTV_SU> (lua_State * L)
-	{
-		DoMethod<eTV_L>(L);
-	}
-
-	VIEW_METHODS(eTV_SU)
-
-	/***********************
-	* Upper-triangular view
-	***********************/
-	template<> void DoMethod<eTV_U> (lua_State * L)
-	{
-		DoMethod<eTV_L>(L);
-	}
-
-	VIEW_METHODS(eTV_U)
-
-	/****************************
-	* Unit lower-triangular view
-	****************************/
-	template<> void DoMethod<eTV_UL> (lua_State * L)
-	{
-		DoMethod<eTV_L>(L);
-	}
-
-	VIEW_METHODS(eTV_UL)
-
-	/****************************
-	* Unit upper-triangular view
-	****************************/
-	template<> void DoMethod<eTV_UU> (lua_State * L)
-	{
-		DoMethod<eTV_L>(L);
-	}
-
-	VIEW_METHODS(eTV_UU)
-
-	//
-	AttachTriangularViewMethods (lua_State * L)
-	{
-		DoMethod<ObjectTypeID<T>::kID>(L);
-	}
 };
 
+//
+template<typename U, unsigned int E> struct AuxTypeName<Eigen::TriangularView<U, E>> {
+	AuxTypeName (luaL_Buffer * B, lua_State * L)
+	{
+		luaL_addstring(B, "TriangularView<");
+
+		AuxTypeName<U>(B, L);
+
+		lua_pushfstring(L, ", %d>", E);	// ..., E
+		luaL_addvalue(B);	// ...
+	}
+};

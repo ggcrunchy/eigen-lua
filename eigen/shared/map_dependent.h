@@ -31,35 +31,7 @@
 
 //
 template<typename T, typename R> struct MapDependentMethods {
-	//
 	ADD_INSTANCE_GETTERS()
-
-	//
-	MapDependentMethods (lua_State * L)
-	{
-		NoMap(L);
-	}
-
-	//
-	template<bool = !std::is_same<T, R>::value> void NoMap (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"__add", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, *GetT(L) + *GetR(L, 2));
-				}
-			}, {
-				"__sub", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, *GetT(L) - *GetR(L, 2));
-				}
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
 
 	//
 	struct ResizeState {
@@ -80,7 +52,7 @@ template<typename T, typename R> struct MapDependentMethods {
 				if (mHas1) mDim1 = LuaXS::Int(L, 2);
 				if (mHas2) mDim2 = LuaXS::Int(L, 3);
 			}
-		
+
 			else
 			{
 				CheckVector(L, mat, 1);
@@ -104,64 +76,118 @@ template<typename T, typename R> struct MapDependentMethods {
 										return 0
 	#define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
 
+	template<typename U> struct AddNonTranspose {
+		AddNonTranspose (lua_State * L)
+		{
+			luaL_Reg methods[] = {
+				{
+					EIGEN_MATRIX_RESIZE_METHOD(conservativeResize)
+				}, {
+					EIGEN_MATRIX_PAIR_VOID_METHOD(conservativeResizeLike)
+				}, 
+			#ifdef WANT_MAP
+				{
+					"reshape", [](lua_State * L)
+					{
+						T & m = *GetT(L);
+						Eigen::Map<T> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
+
+						New<Eigen::Map<T>>(L, std::move(map));	// mat, m, n, map
+						GetTypeData<Eigen::Map<T>>(L)->RefAt(L, "mapped_from", 1);
+
+						return 1;
+					}
+				}, {
+					"reshapeWithInnerStride", [](lua_State * L)
+					{
+						T & m = *GetT(L);
+						Eigen::Map<T, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
+
+						New<decltype(map)>(L, std::move(map));
+						GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
+
+						return 1;
+					}
+				}, {
+					"reshapeWithOuterStride", [](lua_State * L)
+					{
+						T & m = *GetT(L);
+						Eigen::Map<T, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
+
+						New<decltype(map)>(L, std::move(map));
+						GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
+
+						return 1;
+					}
+				},
+			#endif
+				{
+					EIGEN_MATRIX_RESIZE_METHOD(resize)
+				}, {
+					EIGEN_MATRIX_PAIR_VOID_METHOD(resizeLike)
+				},
+				{ nullptr, nullptr }
+			};
+
+			luaL_register(L, nullptr, methods);
+		}
+	};
+
+	template<typename U> struct AddNonTranspose<Eigen::Transpose<U>> {
+		AddNonTranspose (lua_State *) {}
+	};
+
 	//
-	template<> void NoMap<false> (lua_State * L)
+	MapDependentMethods (lua_State * L)
 	{
+/*
 		luaL_Reg methods[] = {
 			{
 				"__add", [](lua_State * L)
 				{
 					TwoMatrices<R> ms{L};
 
-					return NewMoveRet<R>(L, *ms.mMat1 + *ms.mMat2);
+					return NewRet<R>(L, *ms.mMat1 + *ms.mMat2);
 				}
-			}, {
-				EIGEN_MATRIX_RESIZE_METHOD(conservativeResize)
-			}, {
-				EIGEN_MATRIX_PAIR_VOID_METHOD(conservativeResizeLike)
-			},
-		#ifdef WANT_MAP
-			{
-				"reshape", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					Eigen::Map<T> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
-
-					return NewMoveRet<Eigen::Map<T>>(L, map);
-				}
-			}, {
-				"reshapeWithInnerStride", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					Eigen::Map<T, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
-
-					return NewMoveRet<decltype(map)>(L, map);
-				}
-			}, {
-				"reshapeWithOuterStride", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					Eigen::Map<T, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
-
-					return NewMoveRet<decltype(map)>(L, map);
-				}
-			},
-		#endif
-			{
-				EIGEN_MATRIX_RESIZE_METHOD(resize)
-			}, {
-				EIGEN_MATRIX_PAIR_VOID_METHOD(resizeLike)
 			}, {
 				"__sub", [](lua_State * L)
 				{
 					TwoMatrices<R> ms{L};
 
-					return NewMoveRet<R>(L, *ms.mMat1 - *ms.mMat2);
+					return NewRet<R>(L, *ms.mMat1 - *ms.mMat2);
 				}
 			},
 			{ nullptr, nullptr }
 		};
 
 		luaL_register(L, nullptr, methods);
+*/
+		AddNonTranspose<T> ant{L};
+	}
+};
+
+template<typename U, int O, typename S, typename R> struct MapDependentMethods<Eigen::Map<U, O, S>, R> {
+	using T = Eigen::Map<U, O, S>;
+
+	ADD_INSTANCE_GETTERS()
+
+	MapDependentMethods (lua_State * L)
+	{/*
+		luaL_Reg methods[] = {
+			{
+				"__add", [](lua_State * L)
+				{
+					return NewRet<R>(L, *GetT(L) + GetR(L, 2));
+				}
+			}, {
+				"__sub", [](lua_State * L)
+				{
+					return NewRet<R>(L, *GetT(L) - GetR(L, 2));
+				}
+			},
+			{ nullptr, nullptr }
+		};
+		
+		luaL_register(L, nullptr, methods);*/
 	}
 };

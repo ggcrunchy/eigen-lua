@@ -35,10 +35,11 @@
 #include "map_dependent.h"
 #include "non_int.h"
 
-template<typename T, typename R> struct AttachMethods {
+//template<typename T, typename R, AttachTypeValue> struct AttachMethods {
+template<typename T, typename R> struct AttachMatrixMethods {
 	static_assert(std::is_same<typename T::Scalar, typename R::Scalar>::value, "Types have mixed scalars");
 
-	AttachMethods (lua_State * L)
+	/*AttachMethods*/AttachMatrixMethods (lua_State * L)
 	{
 		CommonMethods<T, R>{L};
 		ComplexDependentMethods<T, R>{L};
@@ -48,24 +49,34 @@ template<typename T, typename R> struct AttachMethods {
 		//
 		auto td = GetTypeData<T>(L);
 
-		lua_pushcfunction(L, [](lua_State * L)
-		{
-			return NewMoveRet<R>(L, *LuaXS::UD<T>(L, 1));
+		lua_pushcfunction(L, [](lua_State * L) {
+			return NewRet<R>(L, *LuaXS::UD<T>(L, 1));
 		});	// meta, push
-		lua_pushcfunction(L, [](lua_State * L)
-		{
+		lua_pushcfunction(L, [](lua_State * L) {
 			auto bm = AttachMethods<BoolMatrix>::GetT(L);
 
-			return NewMoveRet<R>(L, WithMatrixOrScalar<T, R>(L, [&bm](const T & m1, const R & m2){
+			return NewRet<R>(L, WithMatrixOrScalar<T, R>(L, [&bm](const T & m1, const R & m2) {
 				return bm->select(m1, m2);
-			}, [&bm](const T & m, const T::Scalar & s){
+			}, [&bm](const T & m, const T::Scalar & s) {
 				return bm->select(m, s);
-			}, [&bm](const T::Scalar & s, const R & m){
+			}, [&bm](const T::Scalar & s, const R & m) {
 				return bm->select(s, m);
 			}, 2, 3));
 		});	// meta, push, select
 
 		td->mSelectRef = lua_ref(L, 1);	// meta, push; registry = { ..., ref = select }
 		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ..., select, ref = push }
+	}
+};
+
+template<typename T, int Rows, int Cols, typename R> struct AttachMethods<Eigen::Matrix<T, Rows, Cols>, R> : AttachMatrixMethods<Eigen::Matrix<T, Rows, Cols>, R> {
+	AttachMethods (lua_State * L) : AttachMatrixMethods<Eigen::Matrix<T, Rows, Cols>, R>(L)
+	{
+	}
+};
+
+template<typename T, int Rows, int Cols, int O, typename S, typename R> struct AttachMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols>, O, S>, R> : AttachMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols>, O, S>, R> {
+	AttachMethods (lua_State * L) : AttachMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols>, O, S>, R>(L)
+	{
 	}
 };

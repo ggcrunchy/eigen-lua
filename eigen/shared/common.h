@@ -27,63 +27,40 @@
 #include "types.h"
 #include "utils.h"
 #include "xprs.h"
+#include "arith_ops.h"
+#include "write_ops.h"
+#include "xpr_ops.h"
 #include "macros.h"
 #include <type_traits>
 
-#define MUTATE(OP)	ReductionOption how = GetReductionChoice(L, 3);							\
-																							\
-					if (how == eDefault) *GetT(L) OP *GetR(L, 2);							\
-																							\
-					else																	\
-					{																		\
-						if (how == eColwise) GetT(L)->colwise() OP AsVector<R>::To(L, 2);	\
-						else GetT(L)->rowwise() OP AsVector<R>::To(L, 2).transpose();		\
-					}																		\
-																							\
-					return SelfForChaining(L)
-
-#define NO_MUTATE(OP)	ReductionOption how = GetReductionChoice(L, 3);													\
-																														\
-						if (how == eDefault) return NewMoveRet<R>(L, *GetT(L) OP *GetR(L, 2));							\
-																														\
-						else																							\
-						{																								\
-							if (how == eColwise) return NewMoveRet<R>(L, GetT(L)->colwise() OP AsVector<R>::To(L, 2));	\
-							else return NewMoveRet<R>(L, GetT(L)->rowwise() OP AsVector<R>::To(L, 2).transpose());		\
-						}																								\
-																														\
+#define NO_MUTATE(OP)	ReductionOption how = GetReductionChoice(L, 3);												\
+																													\
+						if (how == eDefault) return NewRet<R>(L, *GetT(L) OP GetR(L, 2));							\
+																													\
+						else																						\
+						{																							\
+							if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise() OP AsVector<R>::To(L, 2));	\
+							else return NewRet<R>(L, GetT(L)->rowwise() OP AsVector<R>::To(L, 2).transpose());		\
+						}																							\
+																													\
 						return 1
 
-#define IN_PLACE_REDUCE(METHOD)	ReductionOption how = GetReductionChoice(L, 3);			\
-																						\
-								if (how == eDefault) GetT(L)->METHOD();					\
-																						\
-								else													\
-								{														\
-									if (how == eColwise) GetT(L)->colwise().METHOD();	\
-									else GetT(L)->rowwise().METHOD();					\
-								}														\
-																						\
-								return 0
-
-#define XFORM_REDUCE(METHOD)	ReductionOption how = GetReductionChoice(L, 3);									\
-																												\
-								if (how == eDefault) return NewMoveRet<R>(L, GetT(L)->METHOD());				\
-																												\
-								else																			\
-								{																				\
-									if (how == eColwise) return NewMoveRet<R>(L, GetT(L)->colwise().METHOD());	\
-									else return NewMoveRet<R>(L, GetT(L)->rowwise().METHOD());					\
-								}																				\
-																												\
+#define XFORM_REDUCE(METHOD)	ReductionOption how = GetReductionChoice(L, 3);								\
+																											\
+								if (how == eDefault) return NewRet<R>(L, GetT(L)->METHOD());				\
+																											\
+								else																		\
+								{																			\
+									if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
+									else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
+								}																			\
+																											\
 								return 1
 
-#define IN_PLACE_REDUCE_METHOD(NAME) EIGEN_REG(NAME, IN_PLACE_REDUCE(NAME))
 #define XFORM_REDUCE_METHOD(NAME) EIGEN_REG(NAME, XFORM_REDUCE(NAME))
 
 //
 template<typename T, typename R> struct CommonMethods {
-	//
 	ADD_INSTANCE_GETTERS()
 
 	//
@@ -151,13 +128,29 @@ template<typename T, typename R> struct CommonMethods {
 	#define EIGEN_MATRIX_PREDICATE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PREDICATE(NAME))
 
 	//
+	template<typename U> struct Transposer {
+		static int Do (lua_State * L)
+		{
+			New<Eigen::Transpose<U>>(L, GetT(L)->transpose());	// mat, transp
+			GetTypeData<Eigen::Transpose<U>>(L)->RefAt(L, "transposed_from", 1);
+
+			return 1;
+		}
+	};
+
+	template<typename U> struct Transposer<Eigen::Transpose<U>> {
+		static int Do (lua_State * L)
+		{
+			return GetTypeData<T>(L)->GetRef(L, "transposed_from", 1);
+		}
+	};
+
+	//
 	CommonMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				EIGEN_MATRIX_GET_MATRIX_METHOD(adjoint)
-			}, {
-				EIGEN_MATRIX_VOID_METHOD(adjointInPlace)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(allFinite)
 			}, {
@@ -168,35 +161,26 @@ template<typename T, typename R> struct CommonMethods {
 					NO_MUTATE(+);
 				}
 			}, {
-				"addInPlace", [](lua_State * L)
-				{
-					MUTATE(+=);
-				}
-			}, {
 				EIGEN_ARRAY_METHOD(arg)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(asDiagonal)
 			}, {
-				EIGEN_ARRAY_METHOD(asin)
+				"asMatrix", AsMatrix<T, R>
 			}, {
-				"assign", [](lua_State * L)
-				{
-					MUTATE(=);
-				}
+				EIGEN_ARRAY_METHOD(asin)
 			}, {
 				EIGEN_ARRAY_METHOD(atan)
 			}, {
 				"binaryExpr", [](lua_State * L)
 				{
-					return NewMoveRet<R>(L, GetT(L)->binaryExpr(*GetR(L, 2), [L](const T::Scalar & x, const T::Scalar & y)
-					{
+					return NewRet<R>(L, GetT(L)->binaryExpr(GetR(L, 2), [L](const T::Scalar & x, const T::Scalar & y) {
 						LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 3}, x, y);	// mat1, mat2, func, func, x, y
 
 						lua_call(L, 2, 1);	// mat1, mat2, func, result
 
 						T::Scalar result(0);
 
-						if (!lua_isnil(L, -1)) result = ArgObject<R>{}.AsScalar(L, -1);
+						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
 
 						lua_pop(L, 1);	// mat1, mat2, func
 
@@ -204,31 +188,7 @@ template<typename T, typename R> struct CommonMethods {
 					}));
 				}
 			}, {
-				"block", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, GetT(L)->block(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1, LuaXS::Int(L, 4), LuaXS::Int(L, 5)));
-				}
-			}, {
-				"blockAssign", [](lua_State * L)
-				{
-					GetT(L)->block(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1, LuaXS::Int(L, 4), LuaXS::Int(L, 5)) = *GetR(L, 6);
-
-					return 0;
-				}
-			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(blueNorm)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(bottomLeftCorner)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_PAIR_METHOD(bottomLeftCorner)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(bottomRightCorner)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_PAIR_METHOD(bottomRightCorner)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_METHOD(bottomRows)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_METHOD(bottomRows)
 			}, {
 				"__call", [](lua_State * L)
 				{
@@ -275,32 +235,6 @@ template<typename T, typename R> struct CommonMethods {
 					return 1;
 				}
 			}, {
-				"clone", [](lua_State * L)
-				{
-					R clone = *GetT(L);
-
-					return NewMoveRet<R>(L, clone);
-				}
-			}, {
-				"coeffAssign", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					int a = LuaXS::Int(L, 2) - 1;
-
-					if (lua_gettop(L) == 3)
-					{
-						CheckVector(L, m, 1);
-
-						(m.cols() == 1 ? m(a, 0) : m(0, a)) = ArgObject<R>{}.AsScalar(L, 3);
-					}
-
-					else m(a, LuaXS::Int(L, 3) - 1) = ArgObject<R>{}.AsScalar(L, 4);
-
-					return 0;
-				}
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_INDEX_METHOD(col)
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(colStride)
@@ -333,42 +267,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(data)
 			}, {
-				"diagonal", [](lua_State * L)
-				{
-					if (lua_gettop(L) == 1) return NewMoveRet<R>(L, GetT(L)->diagonal());
-
-					else return NewMoveRet<R>(L, GetT(L)->diagonal(LuaXS::Int(L, 2)));
-				}
-			}, {
-				"diagonalAssign", [](lua_State * L)
-				{
-					if (lua_gettop(L) == 2)
-					{
-						R & diag = *GetR(L, 2);
-
-						CheckVector(L, diag, 2);
-
-						GetT(L)->diagonal() = diag;
-					}
-
-					else
-					{
-						R & diag = *GetR(L, 3);
-
-						CheckVector(L, diag, 3);
-
-						GetT(L)->diagonal(LuaXS::Int(L, 2)) = diag;
-					}
-
-					return 0;
-				}
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(diagonalSize)
-			}, {
-				"__div", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, *GetT(L) / ArgObject<R>{}.AsScalar(L, 2));
-				}
 			}, {
 				"dot", [](lua_State * L)
 				{
@@ -377,23 +276,9 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_ARRAY_METHOD(exp)
 			}, {
-				EIGEN_MATRIX_SET_SCALAR_METHOD(fill)
-			}, {
 				"__gc", LuaXS::TypedGC<T>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(hasNaN)
-			}, {
-				"head", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, AsVector<T>::To(L).head(LuaXS::Int(L, 2)));
-				}
-			}, {
-				"headAssign", [](lua_State * L)
-				{
-					AsVector<T>::To(L).head(LuaXS::Int(L, 2)) = AsVector<R>::To(L, 3);
-
-					return 0;
-				}
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(hypotNorm)
 			}, {
@@ -403,12 +288,12 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"isApprox", [](lua_State * L)
 				{
-					return LuaXS::PushArgAndReturn(L, GetT(L)->isApprox(*GetR(L, 2), GetPrecision(L, 3)));
+					return LuaXS::PushArgAndReturn(L, GetT(L)->isApprox(GetR(L, 2), GetPrecision(L, 3)));
 				}
 			}, {
 				"isConstant", [](lua_State * L)
 				{
-					return LuaXS::PushArgAndReturn(L, GetT(L)->isConstant(ArgObject<R>{}.AsScalar(L, 2), GetPrecision(L, 3)));
+					return LuaXS::PushArgAndReturn(L, GetT(L)->isConstant(AsScalar<R>(L, 2), GetPrecision(L, 3)));
 				}
 			}, {
 				EIGEN_MATRIX_PREDICATE_METHOD(isDiagonal)
@@ -438,10 +323,6 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_PREDICATE_METHOD(isZero)
 			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_METHOD(leftCols)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_METHOD(leftCols)
-			}, {
 				"__len", [](lua_State * L)
 				{
 					EIGEN_MATRIX_PUSH_VALUE(size);
@@ -463,45 +344,13 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(mean)
 			}, {
-				EIGEN_MATRIX_GET_MATRIX_INDEX_PAIR_METHOD(middleCols)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_INDEX_PAIR_METHOD(middleCols)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_INDEX_PAIR_METHOD(middleRows)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_INDEX_PAIR_METHOD(middleRows)
-			}, {
-				"__mul", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, WithMatrixOrScalar<T, R>(L, [](const T & m1, const R & m2){
-						return m1 * m2;
-					}, [](const T & m, const T::Scalar & s){
-						return m * s;
-					}, [](const T::Scalar & s, const R & m){
-						return s * m;
-					}, 1, 2));
-				}
-			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(norm)
 			}, {
 				XFORM_REDUCE_METHOD(normalized)
 			}, {
-				IN_PLACE_REDUCE_METHOD(normalize)
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerSize)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
-			}, {
-				"__pow", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, WithMatrixOrScalar<T, R>(L, [](const T & m1, const R & m2){
-						return m1.array().pow(m2.array());
-					}, [](const T & m, const T::Scalar & s){
-						return m.array().pow(s);
-					}, [](const T::Scalar & s, const R & m){
-						return Eigen::pow(s, m.array());
-					}, 1, 2));
-				}
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(prod)
 			}, {
@@ -517,7 +366,7 @@ template<typename T, typename R> struct CommonMethods {
 
 						T::Scalar result(0);
 
-						if (!lua_isnil(L, -1)) result = ArgObject<R>{}.AsScalar(L, -1);
+						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
 
 						lua_pop(L, 1);	// mat, func
 
@@ -533,8 +382,8 @@ template<typename T, typename R> struct CommonMethods {
 
 					else
 					{
-						if (how == eColwise) return NewMoveRet<R>(L, GetT(L)->colwise().redux(func));
-						else return NewMoveRet<R>(L, GetT(L)->rowwise().redux(func));
+						if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().redux(func));
+						else return NewRet<R>(L, GetT(L)->rowwise().redux(func));
 					}
 				}
 			}, {
@@ -547,9 +396,9 @@ template<typename T, typename R> struct CommonMethods {
 						switch (GetReductionChoice(L, 3))
 						{
 						case eColwise:
-							return NewMoveRet<R>(L, GetT(L)->colwise().replicate(a));
+							return NewRet<R>(L, GetT(L)->colwise().replicate(a));
 						case eRowwise:
-							return NewMoveRet<R>(L, GetT(L)->rowwise().replicate(a));
+							return NewRet<R>(L, GetT(L)->rowwise().replicate(a));
 						default:
 							luaL_argcheck(L, false, 3, "Expected column rather than reduction choice");
 
@@ -557,56 +406,14 @@ template<typename T, typename R> struct CommonMethods {
 						}
 					}
 
-					else return NewMoveRet<R>(L, GetT(L)->replicate(a, LuaXS::Int(L, 3)));
+					else return NewRet<R>(L, GetT(L)->replicate(a, LuaXS::Int(L, 3)));
 				}
 			}, {
 				XFORM_REDUCE_METHOD(reverse)
 			}, {
-				IN_PLACE_REDUCE_METHOD(reverseInPlace)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_METHOD(rightCols)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_METHOD(rightCols)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_INDEX_METHOD(row)
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rowStride)
-			}, {
-				"segment", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, AsVector<T>::To(L).segment(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3)));
-				}
-			}, {
-				"segmentAssign", [](lua_State * L)
-				{
-					AsVector<T>::To(L).segment(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3)) = AsVector<R>::To(L, 4);
-
-					return 0;
-				}
-			}, {
-				EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(setConstant)
-			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setIdentity)
-			}, {
-				"setLinSpaced", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-
-					CheckVector(L, m, 1);
-
-					if (m.cols() == 1) m = LinSpacing<T, Eigen::Dynamic, 1>::Do<>(L, m.rows());
-					else m = LinSpacing<T, 1, Eigen::Dynamic>::Do<>(L, m.cols());
-
-					return SelfForChaining(L);
-				}
-			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setOnes)
-			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setRandom)
-			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setZero)
 			}, {
 				EIGEN_ARRAY_METHOD(sin)
 			}, {
@@ -623,16 +430,9 @@ template<typename T, typename R> struct CommonMethods {
 					return LuaXS::PushArgAndReturn(L, AsVector<R>::To(L).stableNorm());
 				}
 			}, {
-				"stableNormalize", [](lua_State * L)
-				{
-					AsVector<R>::To(L).stableNormalize();
-
-					return 0;
-				}
-			}, {
 				"stableNormalized", [](lua_State * L)
 				{
-					return NewMoveRet<R>(L, AsVector<R>::To(L).stableNormalized());
+					return NewRet<R>(L, AsVector<R>::To(L).stableNormalized());
 				}
 			}, {
 				"sub", [](lua_State * L)
@@ -640,42 +440,11 @@ template<typename T, typename R> struct CommonMethods {
 					NO_MUTATE(-);
 				}
 			}, {
-				"subInPlace", [](lua_State * L)
-				{
-					MUTATE(-=);
-				}
-			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(sum)
-			}, {
-				EIGEN_MATRIX_PAIR_VOID_METHOD(swap)
-			}, {
-				"tail", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, AsVector<T>::To(L).tail(LuaXS::Int(L, 2)));
-				}
-			}, {
-				"tailAssign", [](lua_State * L)
-				{
-					AsVector<T>::To(L).tail(LuaXS::Int(L, 2)) = AsVector<R>::To(L, 3);
-
-					return 0;
-				}
 			}, {
 				EIGEN_ARRAY_METHOD(tan)
 			}, {
 				EIGEN_ARRAY_METHOD(tanh)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(topLeftCorner)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_PAIR_METHOD(topLeftCorner)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(topRightCorner)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_PAIR_METHOD(topRightCorner)
-			}, {
-				EIGEN_MATRIX_GET_MATRIX_COUNT_METHOD(topRows)
-			}, {
-				EIGEN_MATRIX_ASSIGN_MATRIX_COUNT_METHOD(topRows)
 			}, {
 				"__tostring", [](lua_State * L)
 				{
@@ -684,21 +453,18 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_GET_SCALAR_METHOD(trace)
 			}, {
-				EIGEN_MATRIX_GET_MATRIX_METHOD(transpose)
-			}, {
-				EIGEN_MATRIX_VOID_METHOD(transposeInPlace)
+				"tranpose", Transposer<T>::Do
 			}, {
 				"unaryExpr", [](lua_State * L)
 				{
-					return NewMoveRet<R>(L, GetT(L)->unaryExpr([L](const T::Scalar & x)
-					{
+					return NewRet<R>(L, GetT(L)->unaryExpr([L](const T::Scalar & x) {
 						LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 2}, x);// mat, func, func, x
 
 						lua_call(L, 1, 1);	// mat, func, result
 
 						T::Scalar result(0);
 
-						if (!lua_isnil(L, -1)) result = ArgObject<R>{}.AsScalar(L, -1);
+						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
 
 						lua_pop(L, 1);	// mat, func
 
@@ -708,12 +474,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"unitOrthogonal", [](lua_State * L)
 				{
-					return NewMoveRet<R>(L, AsVector<T>::To(L).unitOrthogonal());
-				}
-			}, {
-				"__unm", [](lua_State * L)
-				{
-					return NewMoveRet<R>(L, -*GetT(L));
+					return NewRet<R>(L, AsVector<T>::To(L).unitOrthogonal());
 				}
 			}, {
 				EIGEN_MATRIX_GET_SCALAR_METHOD(value)
@@ -754,5 +515,9 @@ template<typename T, typename R> struct CommonMethods {
 		};
 
 		luaL_register(L, nullptr, methods);
+
+		ArithOps<T, R> ao{L};
+		WriteOps<T, R> wo{L};
+		XprOps<T, R> xo{L};
 	}
 };

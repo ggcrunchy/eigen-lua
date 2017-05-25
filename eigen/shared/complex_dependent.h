@@ -29,49 +29,42 @@
 #include "utils.h"
 #include "macros.h"
 
+#define EIGEN_COMPONENT_GET(METHOD)	using RM = Eigen::Matrix<T::Scalar::value_type, Eigen::Dynamic, Eigen::Dynamic>;\
+																													\
+									auto td = GetTypeData<RM>(L);													\
+																													\
+									luaL_argcheck(L, td, 1, "Real matrix type unavailable");						\
+																													\
+									RM m = GetT(L)->METHOD();														\
+																													\
+									lua_getref(L, td->mPushRef);/* mat, push_type */								\
+									lua_pushlightuserdata(L, &m);	/* mat, push_type, comp */						\
+									lua_call(L, 1, 1);	/* mat, conv_mat */											\
+																													\
+									return 1
+
+#define EIGEN_COMPONENT_ASSIGN(METHOD, REAL_TYPE)	using Real = REAL_TYPE;																							\
+																																									\
+													T & m = *GetT(L);																								\
+																																									\
+													if (HasType<Eigen::MatrixXi>(L, 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXi>(L, 2)->cast<Real>();				\
+													else if (HasType<Eigen::MatrixXf>(L, 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<Real>();			\
+													else if (HasType<Eigen::MatrixXd>(L, 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXd>(L, 2)->cast<Real>();			\
+													else if (HasType<Eigen::MatrixXcf>(L, 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcf>(L, 2)->METHOD().cast<Real>();\
+													else if (HasType<Eigen::MatrixXcd>(L, 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcd>(L, 2)->METHOD().cast<Real>();\
+													else luaL_error(L, "Unsupported type");																			\
+																																									\
+													return 0
+
+#define EIGEN_COMPONENT_GET_METHOD(NAME) EIGEN_REG(NAME, EIGEN_COMPONENT_GET(NAME))
+#define EIGEN_COMPONENT_ASSIGN_METHOD(NAME, REAL_TYPE) EIGEN_REG(NAME "Assign", EIGEN_COMPONENT_ASSIGN(NAME, REAL_TYPE))
+
 //
-template<typename T, typename R> struct ComplexDependentMethods {
-	//
+template<typename T, typename R, bool = Eigen::NumTraits<T::Scalar>::IsComplex> struct ComplexDependentMethods {
 	ADD_INSTANCE_GETTERS()
 
 	//
 	ComplexDependentMethods (lua_State * L)
-	{
-		Add(L);
-	}
-
-	#define EIGEN_COMPONENT_GET(METHOD)	using RM = Eigen::Matrix<T::Scalar::value_type, Eigen::Dynamic, Eigen::Dynamic>;\
-																														\
-										auto td = GetTypeData<RM>(L);													\
-																														\
-										luaL_argcheck(L, td, 1, "Real matrix type unavailable");						\
-																														\
-										RM m = GetT(L)->METHOD();														\
-																														\
-										lua_getref(L, td->mPushRef);/* mat, push_type */								\
-										lua_pushlightuserdata(L, &m);	/* mat, push_type, comp */						\
-										lua_call(L, 1, 1);	/* mat, conv_mat */											\
-																														\
-										return 1
-
-	#define EIGEN_COMPONENT_ASSIGN(METHOD, REAL_TYPE)	using Real = REAL_TYPE;																												\
-																																															\
-														T & m = *GetT(L);																													\
-																																															\
-														if (LuaXS::IsType(L, FullName<Eigen::MatrixXi>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXi>(L, 2)->cast<Real>();					\
-														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXf>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXf>(L, 2)->cast<Real>();				\
-														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXd>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXd>(L, 2)->cast<Real>();				\
-														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcf>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcf>(L, 2)->METHOD().cast<Real>();	\
-														else if (LuaXS::IsType(L, FullName<Eigen::MatrixXcd>(), 2)) m.METHOD() = LuaXS::UD<Eigen::MatrixXcd>(L, 2)->METHOD().cast<Real>();	\
-														else luaL_error(L, "Unsupported type");																								\
-																																															\
-														return 0
-
-	#define EIGEN_COMPONENT_GET_METHOD(NAME) EIGEN_REG(NAME, EIGEN_COMPONENT_GET(NAME))
-	#define EIGEN_COMPONENT_ASSIGN_METHOD(NAME, REAL_TYPE) EIGEN_REG(NAME "Assign", EIGEN_COMPONENT_ASSIGN(NAME, REAL_TYPE))
-
-	//
-	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> void Add (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -88,13 +81,14 @@ template<typename T, typename R> struct ComplexDependentMethods {
 
 		luaL_register(L, nullptr, methods);
 	}
+};
+
+//
+template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
+	ADD_INSTANCE_GETTERS()
 
 	//
-	template<bool = std::is_same<T, R>::value
-#ifdef WANT_MAP
-		|| std::is_same<T, Unmapped<T>::MappedType>::value
-#endif
-	> void AddIfNormalStride (lua_State * L)
+	template<bool = IsStrideFree<T>::value> void AddIfNormalStride (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -114,7 +108,7 @@ template<typename T, typename R> struct ComplexDependentMethods {
 				{
 					R temp = *GetT(L);
 
-					return NewMoveRet<R>(L, temp.asPermutation());
+					return NewRet<R>(L, temp.asPermutation());
 				}
 			},
 			{ nullptr, nullptr }
@@ -124,7 +118,7 @@ template<typename T, typename R> struct ComplexDependentMethods {
 	}
 
 	//
-	template<> void Add<false> (lua_State * L)
+	ComplexDependentMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -146,7 +140,7 @@ template<typename T, typename R> struct ComplexDependentMethods {
 			}, {
 				"imag", [](lua_State * L)
 				{
-					return NewMoveRet<R>(L, R{});
+					return NewRet<R>(L, R{});
 				}
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(maxCoeff)
@@ -155,7 +149,7 @@ template<typename T, typename R> struct ComplexDependentMethods {
 			}, {
 				"real", [](lua_State * L)
 				{
-					return NewMoveRet<R>(L, *GetT(L));
+					return NewRet<R>(L, *GetT(L));
 				}
 			}, {
 				EIGEN_COMPONENT_ASSIGN_METHOD(real, T::Scalar)

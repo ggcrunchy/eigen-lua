@@ -26,57 +26,13 @@
 #include "views.h"
 
 //
-EXTENDED_UNRAVELER(Eigen::SelfAdjointView);
+template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::SelfAdjointView<MT, UpLo>, R> {
+	using T = Eigen::SelfAdjointView<MT, UpLo>;
 
-//
-enum {
-	eSelfAdjointViewIDs = eSelfAdjointViewMarker,
-
-	VIEW_ENUMS(eSAV_L),	// Lower-triangular self-adjoint view
-	VIEW_ENUMS(eSAV_U)	// Lower-triangular self-adjoint view
-};
-
-#define ADD_COMPLEX_TYPES(VIEW, ENUM, EX, T, NAME)
-
-//
-#define UNROLL_SAV_UNRAVELERS(T)	UNROLL_VIEW(Eigen::SelfAdjointView, eSAV_L, Eigen::Lower, T, "_savl");	\
-									UNROLL_VIEW(Eigen::SelfAdjointView, eSAV_U, Eigen::Upper, T, "_savu")
-
-//
-#ifdef WANT_FLOAT
-	UNROLL_SAV_UNRAVELERS(Eigen::MatrixXf);
-#endif
-
-#ifdef WANT_DOUBLE
-	UNROLL_SAV_UNRAVELERS(Eigen::MatrixXd);
-#endif
-
-
-#if defined(WANT_CFLOAT) || defined(WANT_CDOUBLE)
-	#undef ADD_COMPLEX_TYPES
-	#define ADD_COMPLEX_TYPES ADD_COMPLEX_VIEW_TYPES
-#endif
-
-//
-#ifdef WANT_CFLOAT
-	UNROLL_SAV_UNRAVELERS(Eigen::MatrixXcf);
-#endif
-
-#ifdef WANT_CDOUBLE
-	UNROLL_SAV_UNRAVELERS(Eigen::MatrixXcd);
-#endif
-
-#undef ADD_COMPLEX_TYPES
-
-//
-template<typename T, typename R> struct AttachSelfAdjointViewMethods {
 	ADD_INSTANCE_GETTERS()
 
 	//
-	template<int> void DoMethod (lua_State * L) {}
-
-	//
-	template<bool = true> static void BaseDerivedSAV(lua_State * L)
+	static void BaseDerivedSAV (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -97,9 +53,9 @@ template<typename T, typename R> struct AttachSelfAdjointViewMethods {
 				"rankUpdate", [](lua_State * L)
 				{
 					auto & v = *GetT(L);
-					bool bHasV = LuaXS::IsType(L, FullName<R>(), 3);
+					bool bHasV = HasType<R>(L, 3);
 					int spos = bHasV ? 4 : 3;
-					R::Scalar alpha = !lua_isnoneornil(L, spos) ? ArgObject<R>{}.AsScalar(L, spos) : R::Scalar(1);
+					R::Scalar alpha = !lua_isnoneornil(L, spos) ? AsScalar<R>(L, spos) : R::Scalar(1);
 
 					if (bHasV) v.rankUpdate(AsVector<R>::To(L, 2), AsVector<R>::To(L, 3), alpha);
 					else v.rankUpdate(AsVector<R>::To(L, 2), alpha);
@@ -158,7 +114,7 @@ template<typename T, typename R> struct AttachSelfAdjointViewMethods {
 			NotMap (lua_State *) {}
 		};
 
-		DerivedSAV(lua_State * L)
+		DerivedSAV (lua_State * L)
 		{
 			luaL_Reg methods[] = {
 				{
@@ -216,19 +172,12 @@ template<typename T, typename R> struct AttachSelfAdjointViewMethods {
 		EIGEN_REAL_GET_COMPLEX(eigenvalues);
 	}
 
-	/************************************
-	* Lower-triangular self-adjoint view
-	************************************/
-	template<> void DoMethod<eSAV_L>(lua_State * L)
+	//
+	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
-				"asMatrix", [](lua_State * L)
-				{
-					R matrix = *GetT(L);
-
-					return NewMoveRet<R>(L, matrix);
-				}
+				"asMatrix", AsMatrix<T, R>
 			}, {
 				"__call", [](lua_State * L)
 				{
@@ -240,6 +189,8 @@ template<typename T, typename R> struct AttachSelfAdjointViewMethods {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(diagonal)
 			}, {
 				"eigenvalues", EigenvaluesSAV<>
+			}, {
+				"__gc", LuaXS::TypedGC<T>
 			}, {
 				"__mul", [](lua_State * L)
 				{
@@ -281,23 +232,17 @@ template<typename T, typename R> struct AttachSelfAdjointViewMethods {
 
 		DerivedSAV<T> derived{L};
 	}
-
-	VIEW_METHODS(eSAV_L)
-
-	/************************************
-	* Upper-triangular self-adjoint view
-	************************************/
-	template<> void DoMethod<eSAV_U> (lua_State * L)
-	{
-		DoMethod<eSAV_L>(L);
-	}
-
-	VIEW_METHODS(eSAV_U)
-
-	//
-	AttachSelfAdjointViewMethods (lua_State * L)
-	{
-		DoMethod<ObjectTypeID<T>::kID>(L);
-	}
 };
 
+//
+template<typename U, unsigned int E> struct AuxTypeName<Eigen::SelfAdjointView<U, E>> {
+	AuxTypeName (luaL_Buffer * B, lua_State * L)
+	{
+		luaL_addstring(B, "SelfAdjointView<");
+
+		AuxTypeName<U>(B, L);
+
+		lua_pushfstring(L, ", %d>", E);	// ..., E
+		luaL_addvalue(B);	// ...
+	}
+};

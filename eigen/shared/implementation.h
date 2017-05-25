@@ -21,9 +21,12 @@
 * [ MIT license: http://www.opensource.org/licenses/mit-license.php ]
 */
 
+#pragma once
+
 #include "CoronaLua.h"
 #include "CoronaLibrary.h"
 #include "utils/Thread.h"
+#include "ByteReader.h"
 
 //
 #ifndef eigen_assert
@@ -43,16 +46,14 @@ static ThreadXS::TLS<lua_State *> tls_LuaState;
 #include <type_traits>
 
 //
-template<typename M> struct AddUmeyama {
-	template<bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && !Eigen::NumTraits<typename M::Scalar>::IsComplex> void Do (lua_State * L)
+template<typename M, bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && !Eigen::NumTraits<typename M::Scalar>::IsComplex> struct AddUmeyama {
+	AddUmeyama (lua_State * L)
 	{
 		luaL_Reg funcs[] = {
 			{
 				"Umeyama", [](lua_State * L)
 				{
-					M xform = Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "no_scaling", 3));
-
-					return NewMoveRet<M>(L, xform);	// src, dst[, no_scaling], xform
+					return NewRet<M>(L, Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "no_scaling", 3)));	// src, dst[, no_scaling], xform
 				}
 			},
 			{ nullptr, nullptr }
@@ -60,13 +61,10 @@ template<typename M> struct AddUmeyama {
 
 		luaL_register(L, nullptr, funcs);
 	}
+};
 
-	template<> void Do<false> (lua_State *) {}
-
-	AddUmeyama (lua_State * L)
-	{
-		Do(L);
-	}
+template<typename M> struct AddUmeyama<M, false> {
+	AddUmeyama (lua_State *) {}
 };
 
 //
@@ -83,24 +81,24 @@ template<typename M> static void AddType (lua_State * L)
 			{
 				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
-				return NewMoveRet<M>(L, M::Constant(m, n, ArgObject<M>{}.AsScalar(L, 3)));	// m[, n], v, k
+				return NewRet<M>(L, M::Constant(m, n, AsScalar<M>(L, 3)));	// m[, n], v, k
 			}
 		}, {
 			"Identity", [](lua_State * L)
 			{
 				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
-				return NewMoveRet<M>(L, M::Identity(m, n));	// m[, n], id
+				return NewRet<M>(L, M::Identity(m, n));	// m[, n], id
 			}
 		}, {
 			"LinSpaced", [](lua_State * L)
 			{
-				return NewMoveRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Do<>(L, LuaXS::Int(L, 1)));
+				return NewRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Make(L, LuaXS::Int(L, 1)));
 			}
 		}, {
 			"LinSpacedRow", [](lua_State * L)
 			{
-				return NewMoveRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Do<>(L, LuaXS::Int(L, 1)));
+				return NewRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Make(L, LuaXS::Int(L, 1)));
 			}
 		}, {
 			"Matrix", [](lua_State * L)
@@ -116,19 +114,101 @@ template<typename M> static void AddType (lua_State * L)
 
 				return 1;
 			}
+		}, 
+	#ifdef WANT_MAP
+				/*
+		{
+			"MatrixFromMemory", [](lua_State * L)
+			{
+				ByteReader memory{L, 1};
+
+				if (!memory.mBytes) lua_error(L);
+
+				int m = luaL_checkint(L, 2), n = luaL_optint(L, 3, m);
+
+				Eigen::Map<M> map(static_cast<const M::Scalar *>(memory.mBytes), m, n);
+
+				New<Eigen::Map<M>>(L, std::move(map));	// memory, m[, n], map
+
+				GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "bytes", 1);
+
+				return 1;
+			}
 		}, {
+			"MatrixFromMemoryWithInnerStride", [](lua_State * L)
+			{
+				lua_settop(L, 4);	// memory, m[, n], stride
+
+				ByteReader memory{L, 1};
+
+				if (!memory.mBytes) lua_error(L);
+
+				int m = luaL_checkint(L, 2), arg3 = luaL_checkint(L, 3), n, stride;
+
+				if (!lua_isnil(L, 4))
+				{
+					stride = luaL_checkint(L, 4);
+					n = arg3;
+				}
+
+				else
+				{
+					stride = arg3;
+					n = m;
+				}
+
+				Unmapped<M>::MappedWithInnerStrideType map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
+
+				New<decltype(map)>(L, std::move(map));	// memory, m[, n], stride, map
+				GetTypeData<decltype(map)>(L)->RefAt(L, "bytes", 1);
+
+				return 1;
+			}
+		}, {
+			"MatrixFromMemoryWithOuterStride", [](lua_State * L)
+			{
+				lua_settop(L, 4);	// memory, m[, n], stride
+
+				ByteReader memory{L, 1};
+
+				if (!memory.mBytes) lua_error(L);
+
+				int m = luaL_checkint(L, 2), arg3 = luaL_checkint(L, 3), n, stride;
+
+				if (!lua_isnil(L, 4))
+				{
+					stride = luaL_checkint(L, 4);
+					n = arg3;
+				}
+
+				else
+				{
+					stride = arg3;
+					n = m;
+				}
+
+				Unmapped<M>::MappedWithOuterStrideType map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
+
+				New<decltype(map)>(L, std::move(map));	// memory, m[, n], stride, map					
+				GetTypeData<decltype(map)>(L)->RefAt(L, "bytes", 1);
+
+				return 1;
+			}
+		},*/
+	#endif
+		{
 			"Ones", [](lua_State * L)
 			{
 				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
-				return NewMoveRet<M>(L, M::Ones(m, n));// m[, n], m1
+				return NewRet<M>(L, M::Ones(m, n));// m[, n], m1
 			}
 		}, {
 			"Random", [](lua_State * L)
 			{
 				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
-				return NewMoveRet<M>(L, M::Random(m, n));	// m[, n], r
+				return NewRet<M>(L, M::Random(m, n));	// m[, n], r
 			}
 		}, {
 			"RandomPermutation", [](lua_State * L)
@@ -139,7 +219,7 @@ template<typename M> static void AddType (lua_State * L)
 
 				std::random_shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size());
 
-				return NewMoveRet<M>(L, perm);// size, perm
+				return NewRet<M>(L, perm);// size, perm
 			}
 		}, {
 			"RowVector", [](lua_State * L)
@@ -160,7 +240,7 @@ template<typename M> static void AddType (lua_State * L)
 			{
 				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
 
-				return NewMoveRet<M>(L, M::Zero(m, n));// m[, n], m0
+				return NewRet<M>(L, M::Zero(m, n));// m[, n], m0
 			}
 		},
 		{ nullptr, nullptr }
@@ -206,19 +286,13 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 		lua_setfield(L, -2, "WithCache");	// ..., cachestack, NewType, M = { WithCache = WithContext }
 		lua_insert(L, -3);	// ..., M, cachestack, NewType
 
-		AddTypeData<BoolMatrix>(L);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
+		auto td = GetTypeData<BoolMatrix>(L, true);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
 
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }
-	#endif
-
-	//
-	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
-		auto td = GetTypeData<BoolMatrix>(L);
-
 		lua_pushcfunction(L, [](lua_State * L)
 		{
-			return NewMoveRet<BoolMatrix>(L, *LuaXS::UD<BoolMatrix>(L, 1));
+			return NewRet<BoolMatrix>(L, *LuaXS::UD<BoolMatrix>(L, 1));
 		});	// meta, push
 
 		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ..., ref = push }

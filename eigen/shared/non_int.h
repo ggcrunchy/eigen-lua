@@ -33,35 +33,52 @@
 #include <type_traits>
 
 //
-template<typename T, typename R> struct NonIntMethods {
-	//
+template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger> struct NonIntMethods {
 	ADD_INSTANCE_GETTERS()
 
-	//
-	NonIntMethods (lua_State * L)
-	{
-		Add(L);
-	}
+	template<typename T> struct UseTemporary : std::false_type {};
+	template<typename U> struct UseTemporary<Eigen::Transpose<U>> : std::true_type {};
+	template<typename U, int O, typename S> struct UseTemporary<Eigen::Map<U, O, S>> : std::true_type {};
 
 	//
-	template<bool = std::is_integral<T::Scalar>::value> void Add (lua_State *) {}
+	template<typename bool = UseTemporary<T>::value> struct MatrixRef {
+		R mMat;
+
+		MatrixRef (lua_State * L, int arg = 1) : mMat{*GetT(L, arg)}
+		{
+		}
+
+		R & operator * (void) { return mMat; }
+		R * operator -> (void) { return &mMat; }
+	};
+
+	template<> struct MatrixRef<false> {
+		R * mPtr;
+
+		MatrixRef (lua_State * L, int arg = 1) : mPtr{GetT(L, arg)}
+		{
+		}
+
+		R & operator * (void) { return *mPtr; }
+		R * operator -> (void) { return mPtr; }
+	};
 
 	//
-	template<bool = std::is_same<T::Scalar, int>::value, bool = Eigen::NumTraits<T::Scalar>::IsComplex> void IgnoreWhenComplex(lua_State * L) {}
+	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> void IgnoreWhenComplex (lua_State * L) {}
 
 	//
-	template<> void IgnoreWhenComplex<false, true>(lua_State * L)
+	template<> void IgnoreWhenComplex<true> (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"eigenSolver", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::ComplexEigenSolver<R>>(L, Eigen::ComplexEigenSolver<R>{*GetT(L), !WantsBool(L, "no_eigenvectors")});
+					return NewRet<Eigen::ComplexEigenSolver<R>>(L, Eigen::ComplexEigenSolver<R>{*MatrixRef<>{L}, !WantsBool(L, "no_eigenvectors")});
 				}
 			}, {
 				"schur", [](lua_State * L)
-				{					
-					return NewMoveRet<Eigen::ComplexSchur<R>>(L, Eigen::ComplexSchur<R>{*GetT(L), !WantsBool(L, "no_u")});
+				{
+					return NewRet<Eigen::ComplexSchur<R>>(L, Eigen::ComplexSchur<R>{*MatrixRef<>{L}, !WantsBool(L, "no_u")});
 				}
 			},
 			{ nullptr, nullptr }
@@ -70,28 +87,28 @@ template<typename T, typename R> struct NonIntMethods {
 		luaL_register(L, nullptr, methods);
 	}
 
-	template<> void IgnoreWhenComplex<false, false>(lua_State * L)
+	template<> void IgnoreWhenComplex<false> (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"eigenSolver", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::EigenSolver<R>>(L, Eigen::EigenSolver<R>{*GetT(L), !WantsBool(L, "no_eigenvectors")});
+					return NewRet<Eigen::EigenSolver<R>>(L, Eigen::EigenSolver<R>{*MatrixRef<>{L}, !WantsBool(L, "no_eigenvectors")});
 				}
 			}, {
 				"generalizedEigenSolver", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::GeneralizedEigenSolver<R>>(L, Eigen::GeneralizedEigenSolver<R>{*GetT(L), *GetR(L, 2), !WantsBool(L, "no_eigenvectors")});
+					return NewRet<Eigen::GeneralizedEigenSolver<R>>(L, Eigen::GeneralizedEigenSolver<R>{*MatrixRef<>{L}, GetR(L, 2), !WantsBool(L, "no_eigenvectors")});
 				}
 			}, {
 				"qz", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::RealQZ<R>>(L, Eigen::RealQZ<R>{*GetT(L), *GetR(L, 2), !WantsBool(L, "no_qz")});
+					return NewRet<Eigen::RealQZ<R>>(L, Eigen::RealQZ<R>{*MatrixRef<>{L}, GetR(L, 2), !WantsBool(L, "no_qz")});
 				}
 			}, {
 				"schur", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::RealSchur<R>>(L, Eigen::RealSchur<R>{*GetT(L), !WantsBool(L, "no_u")});
+					return NewRet<Eigen::RealSchur<R>>(L, Eigen::RealSchur<R>{*MatrixRef<>{L}, !WantsBool(L, "no_u")});
 				}
 			},
 			{ nullptr, nullptr }
@@ -118,35 +135,35 @@ template<typename T, typename R> struct NonIntMethods {
 	}
 
 	//
-	template<> void Add<false> (lua_State * L)
+	NonIntMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"bdcSvd", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::BDCSVD<R>>(L, GetT(L)->bdcSvd(lua_istable(L, 2) ? GetOpts(L) : 0U));
+					return NewRet<Eigen::BDCSVD<R>>(L, MatrixRef<>{L}->bdcSvd(lua_istable(L, 2) ? GetOpts(L) : 0U));
 				}
 			}, {
 				"colPivHouseholderQr", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::ColPivHouseholderQR<R>>(L, GetT(L)->colPivHouseholderQr());
+					return NewRet<Eigen::ColPivHouseholderQR<R>>(L, MatrixRef<>{L}->colPivHouseholderQr());
 				}
 			}, {
 				"completeOrthogonalDecomposition", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::CompleteOrthogonalDecomposition<R>>(L, GetT(L)->completeOrthogonalDecomposition());
+					return NewRet<Eigen::CompleteOrthogonalDecomposition<R>>(L, MatrixRef<>{L}->completeOrthogonalDecomposition());
 				}
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(determinant)
 			}, {
 				"fullPivHouseholderQr", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::FullPivHouseholderQR<R>>(L, GetT(L)->fullPivHouseholderQr());
+					return NewRet<Eigen::FullPivHouseholderQR<R>>(L, MatrixRef<>{L}->fullPivHouseholderQr());
 				}
 			}, {
 				"fullPivLu", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::FullPivLU<R>>(L, GetT(L)->fullPivLu());
+					return NewRet<Eigen::FullPivLU<R>>(L, MatrixRef<>{L}->fullPivLu());
 				}
 			}, {
 				"generalizedSelfAdjointEigenSolver", [](lua_State * L)
@@ -168,17 +185,17 @@ template<typename T, typename R> struct NonIntMethods {
 						method = methods[luaL_checkoption(L, -1, "", names)];
 					}
 
-					return NewMoveRet<Eigen::GeneralizedSelfAdjointEigenSolver<R>>(L, Eigen::GeneralizedSelfAdjointEigenSolver<R>{*GetT(L), *GetR(L, 2), compute | method});
+					return NewRet<Eigen::GeneralizedSelfAdjointEigenSolver<R>>(L, Eigen::GeneralizedSelfAdjointEigenSolver<R>{*MatrixRef<>{L}, GetR(L, 2), compute | method});
 				}
 			}, {
 				"hessenbergDecomposition", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::HessenbergDecomposition<R>>(L, Eigen::HessenbergDecomposition<R>{*GetT(L)});
+					return NewRet<Eigen::HessenbergDecomposition<R>>(L, Eigen::HessenbergDecomposition<R>{*MatrixRef<>{L}});
 				}
 			}, {
 				"householderQr", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::HouseholderQR<R>>(L, GetT(L)->householderQr());
+					return NewRet<Eigen::HouseholderQR<R>>(L, MatrixRef<>{L}->householderQr());
 				}
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(inverse)
@@ -201,16 +218,18 @@ template<typename T, typename R> struct NonIntMethods {
 					using HSVD = Eigen::JacobiSVD<R, Eigen::HouseholderQRPreconditioner>;
 					using NPSVD = Eigen::JacobiSVD<R, Eigen::NoQRPreconditioner>;
 
+					MatrixRef<> mr{L};
+
 					switch (luaL_checkoption(L, 2, "", choices))
 					{
 					case 0:
-						return NewMoveRet<Eigen::JacobiSVD<R>>(L, GetT(L)->jacobiSvd(opts));
+						return NewRet<Eigen::JacobiSVD<R>>(L, mr->jacobiSvd(opts));
 					case 1:
-						return NewMoveRet<FPSVD>(L, FPSVD{*GetT(L), opts});
+						return NewRet<FPSVD>(L, FPSVD{*mr, opts});
 					case 2:
-						return NewMoveRet<HSVD>(L, HSVD{*GetT(L), opts});
+						return NewRet<HSVD>(L, HSVD{*mr, opts});
 					default: // luaL_checkoption will catch anything else
-						return NewMoveRet<NPSVD>(L, NPSVD{*GetT(L), opts});
+						return NewRet<NPSVD>(L, NPSVD{*mr, opts});
 					}
 				}
 			}, {
@@ -219,14 +238,11 @@ template<typename T, typename R> struct NonIntMethods {
 					lua_settop(L, 2);	// mat, how?
 					lua_pushliteral(L, "upper");// mat[, how], "upper"
 
-					if (!lua_equal(L, 2, 3)) return NewMoveRet<Eigen::LDLT<R, Eigen::Lower>>(L, GetT(L)->ldlt());
+					MatrixRef<> mr{L};
 
-					else
-					{
-						Eigen::LDLT<R, Eigen::Upper> ldlt{*GetT(L)};
+					if (!lua_equal(L, 2, 3)) return NewRet<Eigen::LDLT<R, Eigen::Lower>>(L, mr->ldlt());
 
-						return NewMoveRet<Eigen::LDLT<R, Eigen::Upper>>(L, ldlt);
-					}
+					else return NewRet<Eigen::LDLT<R, Eigen::Upper>>(L, Eigen::LDLT<R, Eigen::Upper>{*mr});
 				}
 			}, {
 				"llt", [](lua_State * L)
@@ -234,19 +250,16 @@ template<typename T, typename R> struct NonIntMethods {
 					lua_settop(L, 2);	// mat, how?
 					lua_pushliteral(L, "upper");// mat[, how], "upper"
 
-					if (!lua_equal(L, 2, 3)) return NewMoveRet<Eigen::LLT<R, Eigen::Lower>>(L, GetT(L)->llt());
+					MatrixRef<> mr{L};
 
-					else
-					{
-						Eigen::LLT<R, Eigen::Upper> llt{*GetT(L)};
+					if (!lua_equal(L, 2, 3)) return NewRet<Eigen::LLT<R, Eigen::Lower>>(L, mr->llt());
 
-						return NewMoveRet<Eigen::LLT<R, Eigen::Upper>>(L, llt);
-					}
+					else return NewRet<Eigen::LLT<R, Eigen::Upper>>(L, Eigen::LLT<R, Eigen::Upper>{*mr});
 				}
 			}, {
 				"partialPivLu", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::PartialPivLU<R>>(L, GetT(L)->partialPivLu());
+					return NewRet<Eigen::PartialPivLU<R>>(L, MatrixRef<>{L}->partialPivLu());
 				}
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(operatorNorm)
@@ -255,46 +268,74 @@ template<typename T, typename R> struct NonIntMethods {
 				{
 					auto opts = WantsBool(L, "no_eigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors;
 
-					return NewMoveRet<Eigen::SelfAdjointEigenSolver<R>>(L, Eigen::SelfAdjointEigenSolver<R>{*GetT(L), opts});
+					return NewRet<Eigen::SelfAdjointEigenSolver<R>>(L, Eigen::SelfAdjointEigenSolver<R>{*MatrixRef<>{L}, opts});
 				}
 			}, {
 				"selfadjointView", [](lua_State * L)
 				{
-					const char * names[] = {"lower", "upper", nullptr};
+					const char * names[] = { "lower", "upper", nullptr };
 
 					switch (luaL_checkoption(L, 2, nullptr, names))
 					{
 					case 0:	// Lower-triangular
-						return NewMoveRet<Eigen::SelfAdjointView<T, Eigen::Lower>>(L, GetT(L)->selfadjointView<Eigen::Lower>());
+						New<Eigen::SelfAdjointView<T, Eigen::Lower>>(L, GetT(L)->selfadjointView<Eigen::Lower>());	// mat[, opt], sav
+						GetTypeData<Eigen::SelfAdjointView<T, Eigen::Lower>>(L)->RefAt(L, "sav_viewed_from", 1);
+
+						break;
 					default:// Upper-triangular
-						return NewMoveRet<Eigen::SelfAdjointView<T, Eigen::Upper>>(L, GetT(L)->selfadjointView<Eigen::Upper>());
+						New<Eigen::SelfAdjointView<T, Eigen::Upper>>(L, GetT(L)->selfadjointView<Eigen::Upper>());	// mat[, opt], sav
+						GetTypeData<Eigen::SelfAdjointView<T, Eigen::Upper>>(L)->RefAt(L, "sav_viewed_from", 1);
+
+						break;
 					}
+
+					return 1;
 				}
 			}, {
 				"triangularView", [](lua_State * L)
 				{
-					const char * names[] = {"lower", "strictly_lower", "strictly_upper", "unit_lower", "unit_upper", "upper", nullptr};
+					const char * names[] = { "lower", "strictly_lower", "strictly_upper", "unit_lower", "unit_upper", "upper", nullptr };
 
 					switch (luaL_checkoption(L, 2, nullptr, names))
 					{
 					case 0:	// Lower-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::Lower>>(L, GetT(L)->triangularView<Eigen::Lower>());
+						New<Eigen::TriangularView<T, Eigen::Lower>>(L, GetT(L)->triangularView<Eigen::Lower>());// mat[, opt], tv
+						GetTypeData<Eigen::TriangularView<T, Eigen::Lower>>(L)->RefAt(L, "tv_viewed_from", 1);
+
+						break;
 					case 1:// Strictly lower-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L, GetT(L)->triangularView<Eigen::StrictlyLower>());
+						New<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L, GetT(L)->triangularView<Eigen::StrictlyLower>());// mat[, opt], tv
+						GetTypeData<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L)->RefAt(L, "tv_viewed_from", 1);
+
+						break;
 					case 2:// Strictly upper-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L, GetT(L)->triangularView<Eigen::StrictlyUpper>());
+						New<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L, GetT(L)->triangularView<Eigen::StrictlyUpper>());// mat[, opt], tv
+						GetTypeData<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L)->RefAt(L, "tv_viewed_from", 1);
+
+						break;
 					case 3:// Upper-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::UnitLower>>(L, GetT(L)->triangularView<Eigen::UnitLower>());
+						New<Eigen::TriangularView<T, Eigen::UnitLower>>(L, GetT(L)->triangularView<Eigen::UnitLower>());// mat[, opt], tv
+						GetTypeData<Eigen::TriangularView<T, Eigen::UnitLower>>(L)->RefAt(L, "tv_viewed_from", 1);
+
+						break;
 					case 4:// Unit lower-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::UnitUpper>>(L, GetT(L)->triangularView<Eigen::UnitUpper>());
+						New<Eigen::TriangularView<T, Eigen::UnitUpper>>(L, GetT(L)->triangularView<Eigen::UnitUpper>());// mat[, opt], tv
+						GetTypeData<Eigen::TriangularView<T, Eigen::UnitUpper>>(L)->RefAt(L, "tv_viewed_from", 1);
+
+						break;
 					default:// Unit upper-triangular
-						return NewMoveRet<Eigen::TriangularView<T, Eigen::Upper>>(L, GetT(L)->triangularView<Eigen::Upper>());
+						New<Eigen::TriangularView<T, Eigen::Upper>>(L, GetT(L)->triangularView<Eigen::Upper>());// mat[, opt], tv
+						GetTypeData<Eigen::TriangularView<T, Eigen::Upper>>(L)->RefAt(L, "tv_viewed_from", 1);
+
+						break;
 					}
+
+					return 1;
 				}
 			}, {
 				"tridiagonalization", [](lua_State * L)
 				{
-					return NewMoveRet<Eigen::Tridiagonalization<R>>(L, Eigen::Tridiagonalization<R>{*GetT(L)});
+					return NewRet<Eigen::Tridiagonalization<R>>(L, Eigen::Tridiagonalization<R>{*MatrixRef<>{L}});
 				}
 			},
 			{ nullptr, nullptr }
@@ -306,4 +347,9 @@ template<typename T, typename R> struct NonIntMethods {
 
 		IgnoreWhenComplex(L);
 	}
+};
+
+//
+template<typename T, typename R> struct NonIntMethods<T, R, false> {
+	NonIntMethods (lua_State *) {}
 };
