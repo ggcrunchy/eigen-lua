@@ -83,14 +83,14 @@ template<typename T, typename R> struct ArithOps {
 	template<> struct MatrixOps<true> {
 		static int Add (lua_State * L)
 		{
-			TwoMatricesR<R> ms{L};
+			TwoMatrices<R> ms{L};
 
 			return NewRet<R>(L, *ms.mMat1 + *ms.mMat2);
 		}
 
 		static int Mul (lua_State * L)
 		{
-			return NewRet<R>(L, WithMatrixOrScalarR<R>(L, [](const R & m1, const R & m2) {
+			return NewRet<R>(L, WithMatrixScalarCombination<R>(L, [](const R & m1, const R & m2) {
 				return m1 * m2;
 			}, [](const R & m, const T::Scalar & s) {
 				return m * s;
@@ -101,7 +101,7 @@ template<typename T, typename R> struct ArithOps {
 
 		static int Pow (lua_State * L)
 		{
-			return NewRet<R>(L, WithMatrixOrScalarR<R>(L, [](const R & m1, const R & m2) {
+			return NewRet<R>(L, WithMatrixScalarCombination<R>(L, [](const R & m1, const R & m2) {
 				return m1.array().pow(m2.array());
 			}, [](const R & m, const T::Scalar & s) {
 				return m.array().pow(s);
@@ -112,7 +112,7 @@ template<typename T, typename R> struct ArithOps {
 
 		static int Sub (lua_State * L)
 		{
-			TwoMatricesR<R> ms{L};
+			TwoMatrices<R> ms{L};
 
 			return NewRet<R>(L, *ms.mMat1 - *ms.mMat2);
 		}

@@ -25,7 +25,9 @@
 
 #include "solver_base.h"
 
-//
+/*****************************
+* ComplexEigenSolver methods *
+*****************************/
 template<typename T, typename R> struct AttachMethods<Eigen::ComplexEigenSolver<T>, R> : SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R> {
 	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R>(L)
 	{
@@ -50,7 +52,9 @@ template<typename T, typename R> struct AttachMethods<Eigen::ComplexEigenSolver<
 
 SOLVER_TYPE_NAME(ComplexEigenSolver);
 
-//
+/**********************
+* EigenSolver methods *
+**********************/
 template<typename T, typename R> struct AttachMethods<Eigen::EigenSolver<T>, R> : SolverMethodsBase<Eigen::EigenSolver<T>, R> {
 	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::EigenSolver<T>, R>(L)
 	{
@@ -81,7 +85,9 @@ template<typename T, typename R> struct AttachMethods<Eigen::EigenSolver<T>, R> 
 
 SOLVER_TYPE_NAME(EigenSolver);
 
-//
+/*********************************
+* GeneralizedEigenSolver methods *
+*********************************/
 template<typename T, typename R> struct AttachMethods<Eigen::GeneralizedEigenSolver<T>, R> : SolverMethodsBase<Eigen::GeneralizedEigenSolver<T>, R> {
 	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::GeneralizedEigenSolver<T>, R>(L)
 	{
@@ -131,7 +137,9 @@ template<typename T, typename R> struct SelfAdjointEigensolverMethodsBase : Solv
 	}
 };
 
-//
+/********************************************
+* GeneralizedSelfAdjointEigenSolver methods *
+********************************************/
 template<typename T, typename R> struct AttachMethods<Eigen::GeneralizedSelfAdjointEigenSolver<T>, R> : SelfAdjointEigensolverMethodsBase<Eigen::GeneralizedSelfAdjointEigenSolver<T>, R> {
 	AttachMethods (lua_State * L) : SelfAdjointEigensolverMethodsBase<Eigen::GeneralizedSelfAdjointEigenSolver<T>, R>(L)
 	{
@@ -140,7 +148,9 @@ template<typename T, typename R> struct AttachMethods<Eigen::GeneralizedSelfAdjo
 
 SOLVER_TYPE_NAME(GeneralizedSelfAdjointEigenSolver);
 
-//
+/*********************************
+* SelfAdjointEigenSolver methods *
+*********************************/
 template<typename T, typename R> struct AttachMethods<Eigen::SelfAdjointEigenSolver<T>, R> : SelfAdjointEigensolverMethodsBase<Eigen::SelfAdjointEigenSolver<T>, R> {
 	AttachMethods (lua_State * L) : SelfAdjointEigensolverMethodsBase<Eigen::SelfAdjointEigenSolver<T>, R>(L)
 	{

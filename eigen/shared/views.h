@@ -32,7 +32,9 @@
 #include <type_traits>
 #include <utility>
 
-//
+// TODO: might replace the functions that produce these by some more lightweight packets and collapse
+// to matrices otherwise, since they seem to complicate builds with maps and hunting down all the
+// scalar ops seems unpleasant
 template<typename U, typename V> struct AuxTypeName<Eigen::CwiseUnaryOp<U, V>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{

@@ -58,7 +58,9 @@ template<typename U, typename R> struct SVDMethodsBase : SolverMethodsBase<U, R>
 	}
 };
 
-//
+/*****************
+* BDCSVD methods *
+*****************/
 template<typename U, typename R> struct AttachMethods<Eigen::BDCSVD<U>, R> : SVDMethodsBase<Eigen::BDCSVD<U>, R> {
 	AttachMethods (lua_State * L) : SVDMethodsBase<Eigen::BDCSVD<U>, R>(L)
 	{
@@ -67,7 +69,9 @@ template<typename U, typename R> struct AttachMethods<Eigen::BDCSVD<U>, R> : SVD
 
 SOLVER_TYPE_NAME(BDCSVD);
 
-//
+/********************
+* JacobiSVD methods *
+********************/
 template<typename U, typename R, int QRP> struct AttachMethods<Eigen::JacobiSVD<U, QRP>, R> : SVDMethodsBase<Eigen::JacobiSVD<U, QRP>, R> {
 	AttachMethods (lua_State * L) : SVDMethodsBase<Eigen::JacobiSVD<U, QRP>, R>(L)
 	{

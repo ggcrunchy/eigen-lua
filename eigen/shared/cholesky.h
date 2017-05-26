@@ -25,7 +25,7 @@
 
 #include "solver_base.h"
 
-//
+// Common Cholesky methods body.
 template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<U, R> {
 	CholeskyMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
 	{
@@ -62,7 +62,9 @@ template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<
 	}
 };
 
-//
+/***************
+* LDLT methods *
+***************/
 template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LDLT<U, UpLo>, R> : CholeskyMethodsBase<Eigen::LDLT<U, UpLo>, R> {
 	AttachMethods (lua_State * L) : CholeskyMethodsBase<Eigen::LDLT<U, UpLo>, R>(L)
 	{
@@ -84,11 +86,7 @@ template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LDLT<U, U
 
 					Eigen::MatrixXi im = GetT(L)->transpositionsP().indices();
 
-					lua_getref(L, td->mPushRef);	// m, how, push
-					lua_pushlightuserdata(L, &im);	// m, how, push, transps
-					lua_call(L, 1, 1);	// m, how, transps_im
-
-					return 1;
+					PUSH_TYPED_DATA(im);
 				}
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(vectorD)
@@ -102,7 +100,9 @@ template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LDLT<U, U
 
 SOLVER_TYPE_NAME_EX(LDLT);
 
-//
+/**************
+* LLT methods *
+**************/
 template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LLT<U, UpLo>, R> : CholeskyMethodsBase<Eigen::LLT<U, UpLo>, R> {
 	AttachMethods (lua_State * L) : CholeskyMethodsBase<Eigen::LLT<U, UpLo>, R>(L)
 	{

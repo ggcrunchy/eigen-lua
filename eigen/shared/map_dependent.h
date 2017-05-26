@@ -29,11 +29,11 @@
 #include "macros.h"
 #include <type_traits>
 
-//
+// Methods assigned when the matrix is not mapped.
 template<typename T, typename R> struct MapDependentMethods {
 	ADD_INSTANCE_GETTERS()
 
-	//
+	// State usable by any of the resize methods' overloads.
 	struct ResizeState {
 		int mDim1{1}, mDim2{1};
 		bool mHas1{true}, mHas2{true};
@@ -66,6 +66,7 @@ template<typename T, typename R> struct MapDependentMethods {
 		}
 	};
 
+	// Common form of resize methods.
 	#define EIGEN_MATRIX_RESIZE(METHOD)	T & m = *GetT(L);										\
 										ResizeState rs{L, m};									\
 																								\
@@ -76,6 +77,7 @@ template<typename T, typename R> struct MapDependentMethods {
 										return 0
 	#define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
 
+	// Operations added for non-transposed matrices.
 	template<typename U> struct AddNonTranspose {
 		AddNonTranspose (lua_State * L)
 		{
@@ -133,14 +135,15 @@ template<typename T, typename R> struct MapDependentMethods {
 		}
 	};
 
+	// No-op when matrix is transposed.
 	template<typename U> struct AddNonTranspose<Eigen::Transpose<U>> {
 		AddNonTranspose (lua_State *) {}
 	};
 
-	//
 	MapDependentMethods (lua_State * L)
 	{
 /*
+TODO: by the looks of it, this file really deals in NonMappedOrTranposedMethods (or just RawMatrixMethods?)
 		luaL_Reg methods[] = {
 			{
 				"__add", [](lua_State * L)
@@ -166,6 +169,9 @@ template<typename T, typename R> struct MapDependentMethods {
 	}
 };
 
+// No-op when matrix is mapped.
+// TODO: verify this compiles... if so simplify
+// TODO: Add version for transpose
 template<typename U, int O, typename S, typename R> struct MapDependentMethods<Eigen::Map<U, O, S>, R> {
 	using T = Eigen::Map<U, O, S>;
 

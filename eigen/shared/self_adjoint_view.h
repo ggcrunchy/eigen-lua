@@ -25,7 +25,9 @@
 
 #include "views.h"
 
-//
+/**************************
+* SelfAdjointView methods *
+**************************/
 template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::SelfAdjointView<MT, UpLo>, R> {
 	using T = Eigen::SelfAdjointView<MT, UpLo>;
 
@@ -234,7 +236,6 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	}
 };
 
-//
 template<typename U, unsigned int E> struct AuxTypeName<Eigen::SelfAdjointView<U, E>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{

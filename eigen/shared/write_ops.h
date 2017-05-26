@@ -127,9 +127,9 @@ template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U,
 };
 
 //
-#define MUTATE(OP)	ReductionOption how = GetReductionChoice(L, 3);							\
+#define MUTATE(OP)	auto how = GetVectorwiseOption(L, 3);									\
 																							\
-					if (how == eDefault)													\
+					if (how == eNotVectorwise)												\
 					{																		\
 						MutateOp<R, T> mo{L};												\
 																							\
@@ -145,9 +145,9 @@ template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U,
 					return SelfForChaining(L)
 
 //
-#define IN_PLACE_REDUCE(METHOD)	ReductionOption how = GetReductionChoice(L, 3);			\
+#define IN_PLACE_REDUCE(METHOD)	auto how = GetVectorwiseOption(L, 3);					\
 																						\
-								if (how == eDefault) GetT(L)->METHOD();					\
+								if (how == eNotVectorwise) GetT(L)->METHOD();			\
 																						\
 								else													\
 								{														\

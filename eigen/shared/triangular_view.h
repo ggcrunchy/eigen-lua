@@ -25,7 +25,9 @@
 
 #include "views.h"
 
-//
+/*************************
+* TriangularView methods *
+*************************/
 template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::TriangularView<MT, UpLo>, R> {
 	using T = Eigen::TriangularView<MT, UpLo>;
 
@@ -217,7 +219,6 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	}
 };
 
-//
 template<typename U, unsigned int E> struct AuxTypeName<Eigen::TriangularView<U, E>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{

@@ -26,19 +26,18 @@
 #include "CoronaLua.h"
 #include <Eigen/Eigen>
 
-//
-enum ReductionOption { eDefault, eColwise, eRowwise };
+// Vectorwise approach to use, and a helper to fetch it from the stack.
+enum VectorwiseOption { eNotVectorwise, eColwise, eRowwise };
 
-//
-inline ReductionOption GetReductionChoice (lua_State * L, int arg)
+inline VectorwiseOption GetVectorwiseOption (lua_State * L, int arg)
 {
 	const char * types[] = { "", "colwise", "rowwise", nullptr };
-	ReductionOption opt[] = { eDefault, eColwise, eRowwise };
+	VectorwiseOption opt[] = { eNotVectorwise, eColwise, eRowwise };
 
 	return opt[luaL_checkoption(L, arg, "", types)];
 }
 
-//
+// Helper to return the instance again for method chaining.
 inline int SelfForChaining (lua_State * L)
 {
 	lua_pushvalue(L, 1);// self, ..., self
@@ -46,7 +45,7 @@ inline int SelfForChaining (lua_State * L)
 	return 1;
 }
 
-//
+// Check for strings whose presence means true.
 inline bool WantsBool (lua_State * L, const char * str, int arg = -1)
 {
 	arg = CoronaLuaNormalize(L, arg);
@@ -60,6 +59,7 @@ inline bool WantsBool (lua_State * L, const char * str, int arg = -1)
 	return bWants;
 }
 
+// Helper to fetch a scalar from the stack.
 template<typename T, bool = Eigen::NumTraits<T::Scalar>::IsComplex> struct AuxAsScalar {
 	static typename T::Scalar Do (lua_State * L, int arg)
 	{
@@ -79,19 +79,20 @@ template<typename T> typename T::Scalar AsScalar (lua_State * L, int arg)
 	return AuxAsScalar<T>::Do(L, arg);
 }
 
-//
+// Object that fetches an item from the stack that may be either an object instance or scalar.
 template<typename T> struct ArgObject {
-	T * mMat{nullptr};
-	typename T::Scalar mScalar; // complex numbers preclude easy inclusion in union, so don't bother
+	T * mObject{nullptr};
+	typename T::Scalar mScalar; // scalar may be complex, so unions would have been messy
 
 	ArgObject (lua_State * L, int arg)
 	{
-		if (HasType<T>(L, arg)) mMat = LuaXS::UD<T>(L, arg);
+		if (HasType<T>(L, arg)) mObject = LuaXS::UD<T>(L, arg);
 		else mScalar = AsScalar<T>(L, arg);
 	}
 };
 
-//
+// Populate a matrix (typically a stack temporary) by going through an object's "asMatrix"
+// method. These methods are all built on AsMatrix(), which special cases the logic here.
 template<typename R> R * SetTemp (lua_State * L, R * temp, int arg)
 {
 	lua_pushvalue(L, arg);	// ..., other
@@ -109,20 +110,77 @@ template<typename R> R * SetTemp (lua_State * L, R * temp, int arg)
 	return temp;
 }
 
-//
+// Special case of ArgObject where the object case resolves to a matrix.
 template<typename R> struct ArgObjectR {
-	R mTemp, * mMat{nullptr};
+	R mTemp, * mObject{nullptr}; // "object" for conformity with ArgObject
 	typename R::Scalar mScalar; // q.v. ArgObject
 
 	ArgObjectR (lua_State * L, int arg)
 	{
-		if (HasType<R>(L, arg)) mMat = LuaXS::UD<R>(L, arg);
-		else if (lua_isuserdata(L, arg)) mMat = SetTemp(L, &mTemp, arg);
+		if (HasType<R>(L, arg)) mObject = LuaXS::UD<R>(L, arg);
+		else if (lua_isuserdata(L, arg)) mObject = SetTemp(L, &mTemp, arg); // TODO: better predicate? scalar could have userdata __bytes
 		else mScalar = AsScalar<R>(L, arg);
 	}
 };
 
-//
+// Gets two matrices from items on the stack, where at least one is assumed to resolve to
+// a matrix type. Scalar items are converted to constant matrices, whereas otherwise the
+// ArgObjectR logic is applied.
+template<typename R> struct TwoMatrices {
+	R mK, * mMat1, * mMat2;
+	ArgObjectR<R> mO1, mO2;
+
+	static void CheckTwo (lua_State * L, bool bOK, int arg1, int arg2)
+	{
+		if (!bOK) luaL_error(L, "At least one of arguments %i and %i must resolve to a matrix", arg1, arg2);
+	}
+
+	TwoMatrices (lua_State * L, int arg1 = 1, int arg2 = 2) : mO1{L, arg1}, mO2{L, arg2}
+	{
+		if (mO1.mObject && mO2.mObject)
+		{
+			mMat1 = mO1.mObject;
+			mMat2 = mO2.mObject;
+		}
+
+		else if (mO1.mObject)
+		{
+			mMat1 = mO1.mObject;
+			mMat2 = &mK;
+
+			mK.setConstant(mMat1->rows(), mMat1->cols(), mO2.mScalar);
+		}
+
+		else
+		{
+			CheckTwo(L, mO2.mObject != nullptr, arg1, arg2);
+
+			mMat1 = &mK;
+			mMat2 = mO2.mObject;
+
+			mK.setConstant(mMat2->rows(), mMat2->cols(), mO1.mScalar);
+		}
+	}
+};
+
+// Perform some binary operation from items on the stack where at least one of them is
+// assumed to resolve to a matrix type. Scalars are left as is, whereas matrices are
+// found via the ArgObjectR approach.
+template<typename R, typename MM, typename MS, typename SM> R WithMatrixScalarCombination (lua_State * L, MM && both, MS && mat_scalar, SM && scalar_mat, int arg1, int arg2)
+{
+	ArgObjectR<R> o1{L, arg1}, o2{L, arg2};
+
+	if (!o2.mObject) return mat_scalar(*o1.mObject, o2.mScalar);
+	else if (!o1.mObject) return scalar_mat(o1.mScalar, *o2.mObject);
+	else
+	{
+		TwoMatrices<R>::CheckTwo(L, o1.mObject != nullptr && o2.mObject != nullptr, arg1, arg2);
+
+		return both(*o1.mObject, *o2.mObject);
+	}
+}
+
+// Veneer over the LinSpaced factory that also allows for complex types.
 template<typename T, int R, int C> struct LinSpacing {
 	using V = MatrixOf<typename T::Scalar, R, C>;
 
@@ -147,62 +205,14 @@ template<typename T, int R, int C> struct LinSpacing {
 	}
 };
 
-//
-template<typename T, typename AO = ArgObject<T>> struct TwoMatrices {
-	T mK, * mMat1, * mMat2;
-	AO mO1, mO2;
-
-	TwoMatrices (lua_State * L, int arg1 = 1, int arg2 = 2) : mO1{L, arg1}, mO2{L, arg2}
-	{
-		if (mO1.mMat && mO2.mMat)
-		{
-			mMat1 = mO1.mMat;
-			mMat2 = mO2.mMat;
-		}
-
-		else if (mO1.mMat)
-		{
-			mMat1 = mO1.mMat;
-			mMat2 = &mK;
-
-			mK.setConstant(mMat1->rows(), mMat1->cols(), mO2.mScalar);
-		}
-
-		else
-		{
-			mMat1 = &mK;
-			mMat2 = mO2.mMat;
-
-			mK.setConstant(mMat2->rows(), mMat2->cols(), mO1.mScalar);
-		}
-	}
-};
-
-template<typename R> using TwoMatricesR = TwoMatrices<R, ArgObjectR<R>>;
-
-//
-template<typename T, typename R, typename MM, typename MS, typename SM> R WithMatrixOrScalar (lua_State * L, MM && both, MS && mat_scalar, SM && scalar_mat, int arg1, int arg2)
-{
-	ArgObject<T> o1{L, arg1};
-	ArgObjectR<R> o2{L, arg2};
-
-	if (!o2.mMat) return mat_scalar(*o1.mMat, o2.mScalar);
-	else if (!o1.mMat) return scalar_mat(o1.mScalar, *o2.mMat);
-	else return both(*o1.mMat, *o2.mMat);
-}
-
-//
-template<typename R, typename MM, typename MS, typename SM> R WithMatrixOrScalarR (lua_State * L, MM && both, MS && mat_scalar, SM && scalar_mat, int arg1, int arg2)
-{
-	ArgObjectR<R> o1{L, arg1}, o2{L, arg2};
-
-	if (!o2.mMat) return mat_scalar(*o1.mMat, o2.mScalar);
-	else if (!o1.mMat) return scalar_mat(o1.mScalar, *o2.mMat);
-	else return both(*o1.mMat, *o2.mMat);
-}
-
-//
-//
+// Hooks up method lookup properties in the metatable being populated. If a method with the
+// supplied name exists in another type's metatable, the object doing the lookup is copied
+// into a temporary of that other type. The temporary and method are packaged up into the
+// thunk returned by the property. We can call this like any method, but the thunk will
+// substitute the temporary for the method's self. This allows lightweight interface reuse,
+// albeit with the overhead of the temporaries. A small ring buffer is used to allow a small
+// number of methods at once, unfortunately with the expense of needless additional copies.
+// TODO: this will break down if multiple objects of the same type call methods
 template<typename T, typename R, int RingN = 4> void RingBufferOfMethodThunksProperty (lua_State * L)
 {
 	New<R>(L);	// ..., meta, temp
@@ -219,6 +229,8 @@ template<typename T, typename R, int RingN = 4> void RingBufferOfMethodThunksPro
 			lua_pushvalue(L, lua_upvalueindex(1));	// method, obj, ..., temp
 			lua_replace(L, 2);	// method, temp, ...
 			lua_call(L, lua_gettop(L) - 1, LUA_MULTRET);// ... (results)
+			lua_pushnil(L);	// ..., nil
+			lua_rawset(L, lua_upvalueindex(2));	// ...; upvalue[2] = nil
 
 			return lua_gettop(L);
 		}, 2);	// ..., meta, temp, wrappers, wrapper

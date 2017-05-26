@@ -29,20 +29,20 @@
 #include "utils.h"
 #include "macros.h"
 
-#define EIGEN_COMPONENT_GET(METHOD)	using RM = Eigen::Matrix<T::Scalar::value_type, Eigen::Dynamic, Eigen::Dynamic>;\
-																													\
-									auto td = GetTypeData<RM>(L);													\
-																													\
-									luaL_argcheck(L, td, 1, "Real matrix type unavailable");						\
-																													\
-									RM m = GetT(L)->METHOD();														\
-																													\
-									lua_getref(L, td->mPushRef);/* mat, push_type */								\
-									lua_pushlightuserdata(L, &m);	/* mat, push_type, comp */						\
-									lua_call(L, 1, 1);	/* mat, conv_mat */											\
-																													\
-									return 1
+// Get a component from a complex matrix.
+// TODO: these actually implement a UnaryView, I think...
+#define EIGEN_COMPONENT_GET(METHOD)	using RM = MatrixOf<T::Scalar::value_type>;				\
+																							\
+									auto td = GetTypeData<RM>(L);							\
+																							\
+									luaL_argcheck(L, td, 1, "Real matrix type unavailable");\
+																							\
+									RM m = GetT(L)->METHOD();								\
+																							\
+									PUSH_TYPED_DATA(m)
 
+// Assign a component in a complex matrix.
+// TODO: see note for GET()... if that was implement, should instead be method of that
 #define EIGEN_COMPONENT_ASSIGN(METHOD, REAL_TYPE)	using Real = REAL_TYPE;																							\
 																																									\
 													T & m = *GetT(L);																								\
@@ -59,11 +59,10 @@
 #define EIGEN_COMPONENT_GET_METHOD(NAME) EIGEN_REG(NAME, EIGEN_COMPONENT_GET(NAME))
 #define EIGEN_COMPONENT_ASSIGN_METHOD(NAME, REAL_TYPE) EIGEN_REG(NAME "Assign", EIGEN_COMPONENT_ASSIGN(NAME, REAL_TYPE))
 
-//
+// Methods assigned when the matrix is complex.
 template<typename T, typename R, bool = Eigen::NumTraits<T::Scalar>::IsComplex> struct ComplexDependentMethods {
 	ADD_INSTANCE_GETTERS()
 
-	//
 	ComplexDependentMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -83,11 +82,11 @@ template<typename T, typename R, bool = Eigen::NumTraits<T::Scalar>::IsComplex> 
 	}
 };
 
-//
+// Methods assigned when the matrix is real.
 template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
 	ADD_INSTANCE_GETTERS()
 
-	//
+	// Version of methods when we have a matrix or basic map.
 	template<bool = IsStrideFree<T>::value> void AddIfNormalStride (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -100,6 +99,7 @@ template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
 		luaL_register(L, nullptr, methods);
 	}
 
+	// Version of methods with maps having non-trivial stride.
 	template<> void AddIfNormalStride<false> (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -116,8 +116,7 @@ template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
 
 		luaL_register(L, nullptr, methods);
 	}
-
-	//
+		
 	ComplexDependentMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {

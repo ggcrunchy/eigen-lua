@@ -28,7 +28,7 @@
 #include "ByteReader.h"
 #include <complex>
 
-//
+// Helper to read complex numbers in various formats.
 template<typename T> static std::complex<T> Complex (lua_State * L, int arg)
 {
 	switch (lua_type(L, arg))
@@ -61,6 +61,7 @@ template<typename T> static std::complex<T> Complex (lua_State * L, int arg)
 	}
 }
 
+// Specialize PushArg() for complex types to streamline code elsewhere, e.g. in macros.
 template<> inline void LuaXS::PushArg<std::complex<double>> (lua_State * L, std::complex<double> c)
 {
 	lua_createtable(L, 2, 0);	// ..., c

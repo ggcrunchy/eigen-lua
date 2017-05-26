@@ -55,14 +55,12 @@
 										}																	\
 									}
 
-// template<typename T, typename R> struct AttachMethods2 {}; // TODO: remove me
-
 //
 template<typename T, typename R> struct SolverMethodsBase {
 	ADD_INSTANCE_GETTERS()
 
-		//
-		using Real = typename Eigen::NumTraits<typename R::Scalar>::Real;
+	//
+	using Real = typename Eigen::NumTraits<typename R::Scalar>::Real;
 
 	//
 	template<bool = true> static int Info (lua_State * L) // dummy template parameter as lazy enable_if
@@ -129,7 +127,6 @@ template<typename T, typename R> struct SolverMethodsBase {
 		luaL_register(L, nullptr, methods);
 	}
 
-	//
 	SolverMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {

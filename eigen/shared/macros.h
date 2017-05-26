@@ -40,15 +40,11 @@
 							{																	\
 								ArgObjectR<R> ao{L, 2};											\
 																								\
-								if (ao.mMat) bm = GetT(L)->array() OP ao.mMat->array();			\
+								if (ao.mObject) bm = GetT(L)->array() OP ao.mObject->array();	\
 								else bm = GetT(L)->array() OP ao.mScalar;						\
 							}																	\
 																								\
-							lua_getref(L, td->mPushRef);/* mat, push_bool_matrix */				\
-							lua_pushlightuserdata(L, &bm);/* mat, push_bool_matrix, bm */		\
-							lua_call(L, 1, 1);	/* mat, bool_mat */								\
-																								\
-							return 1
+							PUSH_TYPED_DATA(bm)
 
 //
 #define EIGEN_AS_ARRAY(METHOD)	return NewRet<R>(L, GetT(L)->array().METHOD())
@@ -75,24 +71,22 @@
 #define EIGEN_MATRIX_GET_MATRIX_MATRIX_PAIR(METHOD)	return NewRet<R>(L, GetT(L)->METHOD(GetR(L, 2)))
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR(METHOD)	ArgObjectR<R> ao{L, 2};										\
-																																\
-																	if (ao.mMat) return NewRet<R>(L, GetT(L)->METHOD(*ao.mMat));\
+#define EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR(METHOD)	ArgObjectR<R> ao{L, 2};												\
+																																		\
+																	if (ao.mObject) return NewRet<R>(L, GetT(L)->METHOD(*ao.mObject));	\
 																	else return NewRet<R>(L, GetT(L)->METHOD(ao.mScalar))
 
 //
-#define EIGEN_MATRIX_GET_SCALAR(METHOD)	T::Scalar result = GetT(L)->METHOD();		\
-																					\
-										return LuaXS::PushArgAndReturn(L, result)
+#define EIGEN_MATRIX_GET_SCALAR(METHOD)	return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD())
 
 //
 #define EIGEN_MATRIX_PAIR_VOID(METHOD)	GetT(L)->METHOD(GetR(L, 2));\
 																	\
 										return 0
 
-#define EIGEN_MATRIX_REDUCE(METHOD)	ReductionOption how = GetReductionChoice(L, 2);								\
+#define EIGEN_MATRIX_REDUCE(METHOD)	auto how = GetVectorwiseOption(L, 2);										\
 																												\
-									if (how == eDefault)														\
+									if (how == eNotVectorwise)													\
 									{																			\
 										EIGEN_MATRIX_GET_SCALAR(METHOD);										\
 									}																			\
@@ -126,37 +120,40 @@
 																	\
 										return SelfForChaining(L)
 
-
-
 //
 #define USING_COMPLEX_TYPE() using ComplexType = Eigen::Matrix<std::complex<R::Scalar>, Eigen::Dynamic, Eigen::Dynamic>
 #define GET_COMPLEX_TYPE_DATA()	auto td = GetTypeData<ComplexType>(L);								\
 																									\
 								luaL_argcheck(L, td, 1, "Complex matrix type unavailable for cast")
 
-#define PUSH_TYPED_DATA(item)	lua_getref(L, td->mPushRef);/* solver, ..., push_new_type */			\
-								lua_pushlightuserdata(L, &item);/*solver, push_new_type, item */	\
-								lua_call(L, 1, 1);	/* solver, conv_item */							\
-																									\
+//
+#define PUSH_TYPED_DATA_NO_RET(item)	lua_getref(L, td->mPushRef);/* instance, ..., push_new_type */		\
+										lua_pushlightuserdata(L, &item);/*instance, push_new_type, item */	\
+										lua_call(L, 1, 1)	/* instance, conv_item */
+#define PUSH_TYPED_DATA(item)	PUSH_TYPED_DATA_NO_RET(item);	/* instance, conv_item */	\
+																							\
 								return 1
 
+//
 #define EIGEN_REAL_GET_COMPLEX(METHOD)	GET_COMPLEX_TYPE_DATA();			\
 																			\
 										ComplexType res = GetT(L)->METHOD();\
 																			\
 										PUSH_TYPED_DATA(res)
 
-#define EIGEN_PUSH_AUTO_RESULT(METHOD)	auto res = GetT(L)->METHOD();				\
-																					\
-											return NewRet<decltype(res)>(L, res)
-
 //
-#define EIGEN_REG(NAME, CALL)		#NAME, [](lua_State * L)	\
-									{							\
-										CALL;					\
-									}
+// TODO: too fragile? autos like this lead to surprises :/
+#define EIGEN_PUSH_AUTO_RESULT(METHOD)	auto res = GetT(L)->METHOD();			\
+																				\
+										return NewRet<decltype(res)>(L, res)
 
-//
+// Helper to package a name and method body as a luaL_Reg.
+#define EIGEN_REG(NAME, CALL)	#NAME, [](lua_State * L)	\
+								{							\
+									CALL;					\
+								}
+
+// The above macros wrapped up.
 #define EIGEN_ARRAY_METHOD(NAME) EIGEN_REG(NAME, EIGEN_AS_ARRAY(NAME))
 #define EIGEN_ARRAY_METHOD_BOOL(NAME) EIGEN_REG(NAME, EIGEN_AS_ARRAY_BOOL(NAME))
 #define EIGEN_MATRIX_CHAIN_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_CHAIN(NAME))

@@ -33,9 +33,10 @@
 #include "macros.h"
 #include <type_traits>
 
-#define NO_MUTATE(OP)	ReductionOption how = GetReductionChoice(L, 3);												\
+// Common form of arithmetic operations that leave the matrix intact.
+#define NO_MUTATE(OP)	auto how = GetVectorwiseOption(L, 3);														\
 																													\
-						if (how == eDefault) return NewRet<R>(L, *GetT(L) OP GetR(L, 2));							\
+						if (how == eNotVectorwise) return NewRet<R>(L, *GetT(L) OP GetR(L, 2));						\
 																													\
 						else																						\
 						{																							\
@@ -45,42 +46,44 @@
 																													\
 						return 1
 
-#define XFORM_REDUCE(METHOD)	ReductionOption how = GetReductionChoice(L, 3);								\
-																											\
-								if (how == eDefault) return NewRet<R>(L, GetT(L)->METHOD());				\
-																											\
-								else																		\
-								{																			\
-									if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
-									else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
-								}																			\
-																											\
-								return 1
+// Common form of operations that transform the contents of a matrix.
+#define XFORM(METHOD)	auto how = GetVectorwiseOption(L, 2);										\
+																									\
+						if (how == eNotVectorwise) return NewRet<R>(L, GetT(L)->METHOD());			\
+																									\
+						else																		\
+						{																			\
+							if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
+							else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
+						}																			\
+																									\
+						return 1
 
-#define XFORM_REDUCE_METHOD(NAME) EIGEN_REG(NAME, XFORM_REDUCE(NAME))
+#define XFORM_METHOD(NAME) EIGEN_REG(NAME, XFORM(NAME))
 
-//
+// Methods assigned to matrices in general.
+// TODO: maybe a vector_dependent is in order?
 template<typename T, typename R> struct CommonMethods {
 	ADD_INSTANCE_GETTERS()
 
-	//
+	// Helper to cast the matrix to another type, which may be in another shared library.
 	template<typename U> struct Cast {
-		using MatrixType = Eigen::Matrix<U, Eigen::Dynamic, Eigen::Dynamic>;
+		using MT = MatrixOf<U>;
 
-		template<bool = !Eigen::NumTraits<T::Scalar>::IsComplex, bool = !Eigen::NumTraits<U>::IsComplex> MatrixType CastTo (lua_State * L)
+		template<bool = !Eigen::NumTraits<T::Scalar>::IsComplex, bool = !Eigen::NumTraits<U>::IsComplex> MT CastTo (lua_State * L)
 		{
 			return GetT(L)->template cast<U>();
 		}
 
-		template<> MatrixType CastTo<false, true> (lua_State * L)
+		template<> MT CastTo<false, true> (lua_State * L)
 		{
 			T & m = *GetT(L);
-			MatrixType out;
+			MT out;
 
 			out.resizeLike(m);
 
 			struct VisitCoeffs {
-				MatrixType & mOut;
+				MT & mOut;
 
 				VisitCoeffs (MatrixType & out) : mOut{out}
 				{
@@ -104,30 +107,29 @@ template<typename T, typename R> struct CommonMethods {
 
 		Cast (lua_State * L)
 		{
-			auto td = GetTypeData<MatrixType>(L);
+			auto td = GetTypeData<MT>(L, eFetchIfMissing);
 
 			luaL_argcheck(L, td, 2, "Matrix type unavailable for cast");
 
-			MatrixType m = CastTo(L);
+			MT m = CastTo(L); // mat, new_mat
 
-			lua_getref(L, td->mPushRef);// mat, push_new_type
-			lua_pushlightuserdata(L, &m);	// mat, push_new_type, conv_mat
-			lua_call(L, 1, 1);	// mat, new_mat
+			PUSH_TYPED_DATA_NO_RET(m);
 		}
 	};
 
-	//
-	static decltype(Eigen::NumTraits<T::Scalar>::dummy_precision()) GetPrecision (lua_State * L, int arg)
+	// Helper to query the precision used for comparing matrices from the stack.
+	static typename Eigen::NumTraits<typename T::Scalar>::Real GetPrecision (lua_State * L, int arg)
 	{
-		auto prec = Eigen::NumTraits<T::Scalar>::dummy_precision();
+		auto prec = Eigen::NumTraits<typename T::Scalar>::dummy_precision();
 
 		return !lua_isnoneornil(L, arg) ? LuaXS::GetArg<decltype(prec)>(L, arg) : prec;
 	}
 
-	#define EIGEN_MATRIX_PREDICATE(METHOD)	return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD(GetPrecision(L, 2)))	
+	// Typical form of methods returning a boolean.
+	#define EIGEN_MATRIX_PREDICATE(METHOD) return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD(GetPrecision(L, 2)))	
 	#define EIGEN_MATRIX_PREDICATE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PREDICATE(NAME))
 
-	//
+	// Helper to transpose a matrix without needlessly creating types.
 	template<typename U> struct Transposer {
 		static int Do (lua_State * L)
 		{
@@ -145,7 +147,6 @@ template<typename T, typename R> struct CommonMethods {
 		}
 	};
 
-	//
 	CommonMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -346,7 +347,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(norm)
 			}, {
-				XFORM_REDUCE_METHOD(normalized)
+				XFORM_METHOD(normalized)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerSize)
 			}, {
@@ -356,7 +357,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"redux", [](lua_State * L)
 				{
-					ReductionOption how = GetReductionChoice(L, 3);
+					auto how = GetVectorwiseOption(L, 3);
 
 					auto func = [L](const T::Scalar & x, const T::Scalar & y)
 					{
@@ -373,7 +374,7 @@ template<typename T, typename R> struct CommonMethods {
 						return result;
 					};
 
-					if (how == eDefault)
+					if (how == eNotVectorwise)
 					{
 						T::Scalar result = GetT(L)->redux(func);
 
@@ -393,7 +394,7 @@ template<typename T, typename R> struct CommonMethods {
 
 					if (lua_isstring(L, 3))
 					{
-						switch (GetReductionChoice(L, 3))
+						switch (GetVectorwiseOption(L, 3))
 						{
 						case eColwise:
 							return NewRet<R>(L, GetT(L)->colwise().replicate(a));
@@ -409,7 +410,7 @@ template<typename T, typename R> struct CommonMethods {
 					else return NewRet<R>(L, GetT(L)->replicate(a, LuaXS::Int(L, 3)));
 				}
 			}, {
-				XFORM_REDUCE_METHOD(reverse)
+				XFORM_METHOD(reverse)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
 			}, {

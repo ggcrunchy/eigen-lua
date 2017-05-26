@@ -48,7 +48,9 @@ template<typename U, typename R> struct SchurMethodsBase : SolverMethodsBase<U, 
 	}
 };
 
-//
+/***********************
+* ComplexSchur methods *
+***********************/
 template<typename U, typename R> struct AttachMethods<Eigen::ComplexSchur<U>, R> : SchurMethodsBase<Eigen::ComplexSchur<U>, R> {
 	AttachMethods (lua_State * L) : SchurMethodsBase<Eigen::ComplexSchur<U>, R>(L)
 	{
@@ -57,7 +59,9 @@ template<typename U, typename R> struct AttachMethods<Eigen::ComplexSchur<U>, R>
 
 SOLVER_TYPE_NAME(ComplexSchur);
 
-//
+/********************
+* RealSchur methods *
+********************/
 template<typename U, typename R> struct AttachMethods<Eigen::RealSchur<U>, R> : SchurMethodsBase<Eigen::RealSchur<U>, R> {
 	AttachMethods (lua_State * L) : SchurMethodsBase<Eigen::RealSchur<U>, R>(L)
 	{
@@ -66,7 +70,9 @@ template<typename U, typename R> struct AttachMethods<Eigen::RealSchur<U>, R> : 
 
 SOLVER_TYPE_NAME(RealSchur);
 
-//
+/**********************************
+* HessenburgDecomposition methods *
+**********************************/
 template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposition<U>, R> : SolverMethodsBase<Eigen::HessenbergDecomposition<U>, R> {
 	using T = Eigen::HessenbergDecomposition<U>;
 
@@ -116,7 +122,9 @@ template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposi
 
 SOLVER_TYPE_NAME(HessenbergDecomposition);
 
-//
+/*****************
+* RealQZ methods *
+*****************/
 template<typename U, typename R> struct AttachMethods<Eigen::RealQZ<U>, R> : SolverMethodsBase<Eigen::RealQZ<U>, R> {
 	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::RealQZ<U>, R>(L)
 	{
@@ -145,7 +153,9 @@ template<typename U, typename R> struct AttachMethods<Eigen::RealQZ<U>, R> : Sol
 
 SOLVER_TYPE_NAME(RealQZ);
 
-//
+/*****************************
+* Tridiagonalization methods *
+*****************************/
 template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<U>, R> : SolverMethodsBase<Eigen::Tridiagonalization<U>, R> {
 	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::Tridiagonalization<U>, R>(L)
 	{

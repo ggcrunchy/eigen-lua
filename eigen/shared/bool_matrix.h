@@ -33,7 +33,9 @@
 #include <string>
 #include <Eigen/Eigen>
 
-//
+/*********************
+* BoolMatrix methods *
+*********************/
 template<> struct AttachMethods<BoolMatrix> {
 	static BoolMatrix * GetT (lua_State * L, int arg = 1)
 	{
@@ -48,27 +50,27 @@ template<> struct AttachMethods<BoolMatrix> {
 			{
 				"all", [](lua_State * L)
 				{
-					switch (GetReductionChoice(L, 2))
+					switch (GetVectorwiseOption(L, 2))
 					{
-					case eDefault:
-						EIGEN_MATRIX_PUSH_VALUE(all);
 					case eColwise:
 						return NewRet<BoolMatrix>(L, GetT(L)->colwise().all());
-					default: // GetReductionChoice() will trap anything else
+					case eRowwise:
 						return NewRet<BoolMatrix>(L, GetT(L)->rowwise().all());
+					default: // GetReductionChoice() will trap anything else
+						EIGEN_MATRIX_PUSH_VALUE(all);
 					}
 				}
 			}, {
 				"any", [](lua_State * L)
 				{
-					switch (GetReductionChoice(L, 2))
+					switch (GetVectorwiseOption(L, 2))
 					{
-					case eDefault:
-						EIGEN_MATRIX_PUSH_VALUE(any);
 					case eColwise:
 						return NewRet<BoolMatrix>(L, GetT(L)->colwise().any());
-					default: // GetReductionChoice() will trap anything else
+					case eRowwise:
 						return NewRet<BoolMatrix>(L, GetT(L)->rowwise().any());
+					default: // GetReductionChoice() will trap anything else
+						EIGEN_MATRIX_PUSH_VALUE(any);
 					}
 				}
 			}, {
@@ -104,13 +106,13 @@ template<> struct AttachMethods<BoolMatrix> {
 			}, {
 				"count", [](lua_State * L)
 				{
-					auto how = GetReductionChoice(L, 2);
+					auto how = GetVectorwiseOption(L, 2);
 
-					if (how == eDefault) EIGEN_MATRIX_PUSH_VALUE(count);
+					if (how == eNotVectorwise) EIGEN_MATRIX_PUSH_VALUE(count);
 
 					else
 					{
-						auto td = GetTypeData<Eigen::MatrixXi>(L);
+						auto td = GetTypeData<Eigen::MatrixXi>(L, eFetchIfMissing);
 
 						luaL_argcheck(L, td, 2, "Column- or row-wise count() requires int matrices");
 
@@ -119,11 +121,7 @@ template<> struct AttachMethods<BoolMatrix> {
 						if (how == eColwise) im = GetT(L)->colwise().count();
 						else im = GetT(L)->rowwise().count();
 
-						lua_getref(L, td->mPushRef);	// m, how, push
-						lua_pushlightuserdata(L, &im);	// m, how, push, counts
-						lua_call(L, 1, 1);	// m, how, count_im
-
-						return 1;
+						PUSH_TYPED_DATA(im);
 					}
 				}
 			}, {
@@ -139,11 +137,11 @@ template<> struct AttachMethods<BoolMatrix> {
 				"select", [](lua_State * L)
 				{
 					TypeData * types[] = {
-						GetTypeData<Eigen::MatrixXi>(L),
-						GetTypeData<Eigen::MatrixXf>(L),
-						GetTypeData<Eigen::MatrixXd>(L),
-						GetTypeData<Eigen::MatrixXcf>(L),
-						GetTypeData<Eigen::MatrixXcd>(L)
+						GetTypeData<Eigen::MatrixXi>(L, eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXf>(L, eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXd>(L, eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXcf>(L, eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXcd>(L, eFetchIfMissing)
 					};
 
 					for (auto cur : types)

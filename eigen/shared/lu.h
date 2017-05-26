@@ -52,7 +52,9 @@ template<typename U, typename R> struct LUMethodsBase : SolverMethodsBase<U, R> 
 	}
 };
 
-//
+/********************
+* FullPivLU methods *
+********************/
 template<typename U, typename R> struct AttachMethods<Eigen::FullPivLU<U>, R> : LUMethodsBase<Eigen::FullPivLU<U>, R> {
 	AttachMethods (lua_State * L) : LUMethodsBase<Eigen::FullPivLU<U>, R>(L)
 	{
@@ -80,7 +82,9 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivLU<U>, R> : 
 
 SOLVER_TYPE_NAME(FullPivLU);
 
-//
+/***********************
+* PartialPivLU methods *
+***********************/
 template<typename U, typename R> struct AttachMethods<Eigen::PartialPivLU<U>, R> : LUMethodsBase<Eigen::PartialPivLU<U>, R> {
 	AttachMethods (lua_State * L) : LUMethodsBase<Eigen::PartialPivLU<U>, R>(L)
 	{

@@ -28,12 +28,12 @@
 #include "utils/Thread.h"
 #include "ByteReader.h"
 
-//
+// Propagate asserts to Lua.
 #ifndef eigen_assert
-#define eigen_assert(x) if (!(x)) luaL_error(tls_LuaState, "Eigen error: " #x);
+	#define eigen_assert(x) if (!(x)) luaL_error(tls_LuaState, "Eigen error: " #x);
 #endif
 
-//
+// Let eigen_assert() know the main state on a given thread.
 static ThreadXS::TLS<lua_State *> tls_LuaState;
 
 #include "config.h"
@@ -45,7 +45,7 @@ static ThreadXS::TLS<lua_State *> tls_LuaState;
 #include <algorithm>
 #include <type_traits>
 
-//
+// Add Umeyama() for real floating point matrices.
 template<typename M, bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && !Eigen::NumTraits<typename M::Scalar>::IsComplex> struct AddUmeyama {
 	AddUmeyama (lua_State * L)
 	{
@@ -67,14 +67,13 @@ template<typename M> struct AddUmeyama<M, false> {
 	AddUmeyama (lua_State *) {}
 };
 
-//
+// Supplies some front end functions for the type, in particular various matrix factories.
 template<typename M> static void AddType (lua_State * L)
 {
-	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
+	#ifdef EIGEN_PLUGIN_BASIC
 		lua_newtable(L);// eigen, module
 	#endif
 
-	//
 	luaL_Reg funcs[] = {
 		{
 			"Constant", [](lua_State * L)
@@ -120,7 +119,7 @@ template<typename M> static void AddType (lua_State * L)
 		{
 			"MatrixFromMemory", [](lua_State * L)
 			{
-				ByteReader memory{L, 1};
+				ByteReader memory{L, 1}; // TODO: rather, this should be a MemoryBlob or string
 
 				if (!memory.mBytes) lua_error(L);
 
@@ -138,7 +137,7 @@ template<typename M> static void AddType (lua_State * L)
 			{
 				lua_settop(L, 4);	// memory, m[, n], stride
 
-				ByteReader memory{L, 1};
+				ByteReader memory{L, 1}; // see MatrixFromMemory
 
 				if (!memory.mBytes) lua_error(L);
 
@@ -168,7 +167,7 @@ template<typename M> static void AddType (lua_State * L)
 			{
 				lua_settop(L, 4);	// memory, m[, n], stride
 
-				ByteReader memory{L, 1};
+				ByteReader memory{L, 1}; // see MatrixFromMemory
 
 				if (!memory.mBytes) lua_error(L);
 
@@ -245,25 +244,24 @@ template<typename M> static void AddType (lua_State * L)
 		{ nullptr, nullptr }
 	};
 
-	//
 	luaL_register(L, nullptr, funcs);
 
 	AddUmeyama<M> au{L};
 
-	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
-		lua_setfield(L, -2, ScalarName<M::Scalar>{}.Get());	// eigen = { ..., name = funcs }
+	#ifdef EIGEN_PLUGIN_BASIC
+		lua_setfield(L, -2, GetTypeData<M>(L, eCreateIfMissing)->GetName());// eigen = { ..., name = funcs }
 	#endif
 }
 
-//
+// Build-specific library name.
 #define EIGEN_LIB_NAME(name) #name
 
-//
+// Module entry point.
 CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 {
 	tls_LuaState = L;
 
-	//
+	// If this is the core or all-in-one module, create a cache.
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_getglobal(L, "require");// ... require
 		lua_pushliteral(L, "cachestack");	// ..., require, "plugin.cachestack"
@@ -274,27 +272,30 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 		lua_call(L, 0, 2);	// ..., cachestack, NewType, WithContext
 	#endif
 
-	//
+	// Register the module with Corona.
+	// TODO: make robust for other threads
 	luaL_Reg no_funcs[] = { { nullptr, nullptr } };
 
 	CoronaLibraryNew(L, EIGEN_LIB_NAME(PLUGIN_SUFFIX), "com.xibalbastudios", 1, 0, no_funcs, nullptr);	// ...[, cachestack, NewType, WithContext], M
 
-	//
+	// If this is the core or all-in-one module, add the WithCache() routine just supplied.
+	// The boolean matrix type is then created; as a side effect, it adds the cache binding
+	// logic to the registry, using its type data as key, q.v. GetTypeKey().
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_insert(L, -2);	// ..., cachestack, NewType, M, WithContext
 		lua_setfield(L, -2, "WithCache");	// ..., cachestack, NewType, M = { WithCache = WithContext }
 		lua_insert(L, -3);	// ..., M, cachestack, NewType
 
-		auto td = GetTypeData<BoolMatrix>(L, true);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
+		auto td = GetTypeData<BoolMatrix>(L, eCreateIfMissing);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
 
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }
-		lua_pushcfunction(L, [](lua_State * L)
-		{
+		lua_pushcfunction(L, [](lua_State * L) {
 			return NewRet<BoolMatrix>(L, *LuaXS::UD<BoolMatrix>(L, 1));
 		});	// meta, push
 
 		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ..., ref = push }
+		// ^^^ TODO: this is probably no longer necessary, since BoolMatrix is always present by design
 	#endif
 
 #ifdef WANT_INT

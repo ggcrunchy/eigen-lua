@@ -134,19 +134,15 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivHouseholderQ
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixQR)
 			}, {
 				"rowsTranspositions", [](lua_State * L)
-		{
-			auto td = GetTypeData<Eigen::MatrixXi>(L);
+				{
+					auto td = GetTypeData<Eigen::MatrixXi>(L);
 
-			luaL_argcheck(L, td, 2, "rowsTranspositions() requires int matrices");
+					luaL_argcheck(L, td, 2, "rowsTranspositions() requires int matrices");
 
-			Eigen::MatrixXi im = GetT(L)->rowsTranspositions();
+					Eigen::MatrixXi im = GetT(L)->rowsTranspositions();
 
-			lua_getref(L, td->mPushRef);	// m, how, push
-			lua_pushlightuserdata(L, &im);	// m, how, push, transps
-			lua_call(L, 1, 1);	// m, how, transps_im
-
-			return 1;
-		}
+					PUSH_TYPED_DATA(im);
+				}
 			},
 			{ nullptr, nullptr }
 		};

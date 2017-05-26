@@ -34,49 +34,73 @@
 #include "complex_dependent.h"
 #include "map_dependent.h"
 #include "non_int.h"
+#include <type_traits>
 
-//template<typename T, typename R, AttachTypeValue> struct AttachMethods {
+// Common matrix methods attachment body.
 template<typename T, typename R> struct AttachMatrixMethods {
 	static_assert(std::is_same<typename T::Scalar, typename R::Scalar>::value, "Types have mixed scalars");
 
-	/*AttachMethods*/AttachMatrixMethods (lua_State * L)
+	AttachMatrixMethods (lua_State * L)
 	{
 		CommonMethods<T, R>{L};
 		ComplexDependentMethods<T, R>{L};
 		MapDependentMethods<T, R>{L};
 		NonIntMethods<T, R>{L};
 
-		//
+		// Hook up routines to push a matrix, e.g. from another shared library, and with similar
+		// reasoning to use such matrices in BoolMatrix::select().
 		auto td = GetTypeData<T>(L);
 
 		lua_pushcfunction(L, [](lua_State * L) {
 			return NewRet<R>(L, *LuaXS::UD<T>(L, 1));
 		});	// meta, push
-		lua_pushcfunction(L, [](lua_State * L) {
-			auto bm = AttachMethods<BoolMatrix>::GetT(L);
 
-			return NewRet<R>(L, WithMatrixOrScalar<T, R>(L, [&bm](const T & m1, const R & m2) {
-				return bm->select(m1, m2);
-			}, [&bm](const T & m, const T::Scalar & s) {
-				return bm->select(m, s);
-			}, [&bm](const T::Scalar & s, const R & m) {
-				return bm->select(s, m);
-			}, 2, 3));
-		});	// meta, push, select
+		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ...[, select], ref = push }
 
-		td->mSelectRef = lua_ref(L, 1);	// meta, push; registry = { ..., ref = select }
-		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ..., select, ref = push }
+		// Selection simply resolves to a matrix type, so reuse the logic if available.
+		if (!std::is_same<T, R>::value)
+		{
+			auto rtd = GetTypeData<R>(L);
+
+			if (rtd) td->mSelectRef = rtd->mSelectRef;
+		}
+
+		// Failing the above, supply a new function.
+		if (td->mSelectRef != LUA_NOREF)
+		{
+			lua_pushcfunction(L, [](lua_State * L) {
+				auto bm = AttachMethods<BoolMatrix>::GetT(L);
+
+				return NewRet<R>(L, WithMatrixScalarCombination<R>(L, [&bm](const R & m1, const R & m2) {
+					return bm->select(m1, m2);
+				}, [&bm](const R & m, const R::Scalar & s) {
+					return bm->select(m, s);
+				}, [&bm](const R::Scalar & s, const R & m) {
+					return bm->select(s, m);
+				}, 2, 3));
+			});	// meta, push, select
+
+			td->mSelectRef = lua_ref(L, 1);	// meta, push; registry = { ..., ref = select }
+		}
 	}
 };
 
-template<typename T, int Rows, int Cols, typename R> struct AttachMethods<Eigen::Matrix<T, Rows, Cols>, R> : AttachMatrixMethods<Eigen::Matrix<T, Rows, Cols>, R> {
-	AttachMethods (lua_State * L) : AttachMatrixMethods<Eigen::Matrix<T, Rows, Cols>, R>(L)
+/*****************
+* Matrix methods *
+*****************/
+template<typename T, int Rows, int Cols, int Options, int MaxRows, int MaxCols, typename R> struct AttachMethods<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, R> : AttachMatrixMethods<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, R> {
+	AttachMethods (lua_State * L) : AttachMatrixMethods<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, R>(L)
 	{
 	}
 };
 
-template<typename T, int Rows, int Cols, int O, typename S, typename R> struct AttachMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols>, O, S>, R> : AttachMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols>, O, S>, R> {
-	AttachMethods (lua_State * L) : AttachMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols>, O, S>, R>(L)
+/************************
+* Mapped matrix methods *
+************************/
+template<typename T, int Rows, int Cols, int Options, int MaxRows, int MaxCols, int MapOptions, typename S, typename R> struct AttachMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>, R> : AttachMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>, R> {
+	AttachMethods (lua_State * L) : AttachMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>, R>(L)
 	{
 	}
 };
+
+// TODO: transpose, etc.
