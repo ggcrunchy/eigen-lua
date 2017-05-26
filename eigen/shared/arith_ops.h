@@ -44,22 +44,24 @@ template<typename T, typename R> struct ArithOps {
 		{
 			bool b1 = HasType<T>(L, 1), b2 = HasType<T>(L, 2);
 
-			#define MULT_MIXED(I1, I2)	T & m = *LuaXS::UD<T>(L, I1);																												\
-																																													\
-										if (HasType<Eigen::Block<R>>(L, I2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Block<R>>(L, I2));											\
-										else if (HasType<Eigen::Transpose<R>>(L, I2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Transpose<R>>(L, I2));								\
-										else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, I2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, I2))
-
 			if (b1 && b2) return NewRet<R>(L, *LuaXS::UD<T>(L, 1) * *LuaXS::UD<T>(L, 2));
 
 			else if (b1)
 			{
-				MULT_MIXED(1, 2);
+				T & m = *LuaXS::UD<T>(L, 1);
+
+				if (HasType<Eigen::Block<R>>(L, 2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Block<R>>(L, 2));
+				else if (HasType<Eigen::Transpose<R>>(L, 2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Transpose<R>>(L, 2));
+				else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, 2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, 2));
 			}
 
 			else
 			{
-				MULT_MIXED(2, 1);
+				T & m = *LuaXS::UD<T>(L, 2);
+
+				if (HasType<Eigen::Block<R>>(L, 1)) return NewRet<R>(L, *LuaXS::UD<Eigen::Block<R>>(L, 1) * m);
+				else if (HasType<Eigen::Transpose<R>>(L, 1)) return NewRet<R>(L, *LuaXS::UD<Eigen::Transpose<R>>(L, 1) * m);
+				else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, 1)) return NewRet<R>(L, *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, 1) * m);
 			}
 
 			return MatrixOps<true>::Mul(L);

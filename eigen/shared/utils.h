@@ -123,12 +123,12 @@ template<typename R> struct ArgObjectR {
 };
 
 //
-template<typename T, int R, int C, bool = Eigen::NumTraits<T::Scalar>::IsComplex> struct LinSpacing {
-	using V = Eigen::Matrix<typename T::Scalar, R, C>;
+template<typename T, int R, int C> struct LinSpacing {
+	using V = MatrixOf<typename T::Scalar, R, C>;
 
-	static V Make (lua_State * L, int n)
+	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> static V Make (lua_State * L, int n)
 	{
-		using RealV = Eigen::Matrix<T::Scalar::value_type, R, C>;
+		using RealV = MatrixOf<T::Scalar::value_type, R, C>;
 
 		T::Scalar low = AsScalar<T>(L, 2), high = AsScalar<T>(L, 3);
 		V cv;
@@ -140,12 +140,8 @@ template<typename T, int R, int C, bool = Eigen::NumTraits<T::Scalar>::IsComplex
 
 		return cv;
 	}
-};
 
-template<typename T, int R, int C> struct LinSpacing<T, R, C, false> {
-	using V = Eigen::Matrix<typename T::Scalar, R, C>;
-
-	static V Make (lua_State * L, int n)
+	template<> static V Make<false> (lua_State * L, int n)
 	{
 		return V::LinSpaced(n, AsScalar<T>(L, 2), AsScalar<T>(L, 3));
 	}

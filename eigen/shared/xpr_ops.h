@@ -30,10 +30,9 @@
 #include <type_traits>
 
 //
-#define NEW_XPR(METHOD, ...)	auto object = *GetT(L);									\
-								using XprType = decltype(object.METHOD(__VA_ARGS__));	\
+#define NEW_XPR(METHOD, ...)	using XprType = decltype(GetT(L)->METHOD(__VA_ARGS__));	\
 																						\
-								New<XprType>(L, object.METHOD(__VA_ARGS__))
+								New<XprType>(L, GetT(L)->METHOD(__VA_ARGS__))
 #define REF_XPR_SOURCE()	GetTypeData<XprType>(L)->RefAt(L, "xpr_from", 1);	\
 																				\
 							return 1

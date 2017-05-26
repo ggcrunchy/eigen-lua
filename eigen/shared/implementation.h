@@ -129,7 +129,6 @@ template<typename M> static void AddType (lua_State * L)
 				Eigen::Map<M> map(static_cast<const M::Scalar *>(memory.mBytes), m, n);
 
 				New<Eigen::Map<M>>(L, std::move(map));	// memory, m[, n], map
-
 				GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "bytes", 1);
 
 				return 1;
@@ -157,7 +156,7 @@ template<typename M> static void AddType (lua_State * L)
 					n = m;
 				}
 
-				Unmapped<M>::MappedWithInnerStrideType map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
+				Eigen::Map<M, 0, Eigen::InnerStride<>> map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
 
 				New<decltype(map)>(L, std::move(map));	// memory, m[, n], stride, map
 				GetTypeData<decltype(map)>(L)->RefAt(L, "bytes", 1);
@@ -187,7 +186,7 @@ template<typename M> static void AddType (lua_State * L)
 					n = m;
 				}
 
-				Unmapped<M>::MappedWithOuterStrideType map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
+				Eigen::Map<M, 0, Eigen::OuterStride<>> map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
 
 				New<decltype(map)>(L, std::move(map));	// memory, m[, n], stride, map					
 				GetTypeData<decltype(map)>(L)->RefAt(L, "bytes", 1);

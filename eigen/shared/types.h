@@ -49,7 +49,7 @@ template<typename T> struct RawMatrix {
 //
 template<typename T> struct IsStrideFree : std::false_type {};
 template<typename T, int Rows, int Cols> struct IsStrideFree<Eigen::Matrix<T, Rows, Cols>> : std::true_type {};
-template<typename U> struct IsStrideFree<Eigen::Map<U>> : std_true_type {};
+template<typename U> struct IsStrideFree<Eigen::Map<U>> : std::true_type {};
 
 //
 #define TYPE_DATA_KEY_SIGNATURE "TD:"
@@ -395,12 +395,12 @@ template<typename U, int O, typename S> struct AsVector<Eigen::Map<U, O, S>, fal
 
 	static void New (Type * v, T * m)
 	{
-		new (v) Type{m->data(), m->size(), S{m->outerStride(), m->innerStride()}};
+		new (v) Type{m->data(), m->size(), S{std::is_same<S, Eigen::OuterStride<>>::value ? m->outerStride() : m->innerStride()}};
 	}
 
 	static Type To (T * m)
 	{
-		return Type{m->data(), m->size(), S{m->outerStride(), m->innerStride()}};
+		return Type{m->data(), m->size(), S{std::is_same<S, Eigen::OuterStride<>>::value ? m->outerStride() : m->innerStride()}};
 	}
 
 	static Type To (lua_State * L, int arg = 1)
