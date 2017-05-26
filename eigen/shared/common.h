@@ -85,7 +85,7 @@ template<typename T, typename R> struct CommonMethods {
 			struct VisitCoeffs {
 				MT & mOut;
 
-				VisitCoeffs (MatrixType & out) : mOut{out}
+				VisitCoeffs (MT & out) : mOut{out}
 				{
 				}
 
