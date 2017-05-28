@@ -30,9 +30,10 @@
 #include <type_traits>
 
 //
-#define NEW_XPR(METHOD, ...)	using XprType = decltype(GetT(L)->METHOD(__VA_ARGS__));	\
-																						\
-								New<XprType>(L, GetT(L)->METHOD(__VA_ARGS__))
+#define NEW_XPR(METHOD, ...)	XprSource<> xprs{L};										\
+								using XprType = decltype(xprs.mPtr->METHOD(__VA_ARGS__));	\
+																							\
+								New<XprType>(L, xprs.mPtr->METHOD(__VA_ARGS__))
 #define REF_XPR_SOURCE()	GetTypeData<XprType>(L)->RefAt(L, "xpr_from", 1);	\
 																				\
 							return 1
@@ -118,6 +119,26 @@ template<typename T> static typename AsVector<T>::Type * GetVectorFromRing (lua_
 //
 template<typename T, typename R = T> struct XprOps {
 	ADD_INSTANCE_GETTERS()
+
+	//
+	template<bool = IsXpr<T>::value> struct XprSource {
+		R * mPtr;
+
+		XprSource (lua_State * L)
+		{
+			mPtr = New<R>(L, *GetT(L));	// xpr, ..., new_mat
+
+			lua_replace(L, 1);	// new_mat, ...
+		}
+	};
+
+	template<> struct XprSource<false> {
+		T * mPtr;
+
+		XprSource (lua_State * L) : mPtr{GetT(L)}
+		{
+		}
+	};
 
 	XprOps (lua_State * L)
 	{

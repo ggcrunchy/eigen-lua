@@ -32,7 +32,7 @@
 #include "triangular_view.h"
 #include <type_traits>
 
-//
+// Methods assigned to matrices with non-integer types.
 template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger> struct NonIntMethods {
 	ADD_INSTANCE_GETTERS()
 
@@ -40,7 +40,8 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 	template<typename U> struct UseTemporary<Eigen::Transpose<U>> : std::true_type {};
 	template<typename U, int O, typename S> struct UseTemporary<Eigen::Map<U, O, S>> : std::true_type {};
 
-	//
+	// Solvers seem to rebel when we stray too far from stock matrices, so feed our object to
+	// a temporary in these circumstances and supply that, favoring basic pointers otherwise.
 	template<typename bool = UseTemporary<T>::value> struct MatrixRef {
 		R mMat;
 
@@ -63,22 +64,19 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 		R * operator -> (void) { return mPtr; }
 	};
 
-	//
-	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> void IgnoreWhenComplex (lua_State * L) {}
-
-	//
-	template<> void IgnoreWhenComplex<true> (lua_State * L)
+	// Conditionally add certain solvers according to whether the matrix is complex.
+	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> void IgnoreWhenComplex (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"eigenSolver", [](lua_State * L)
 				{
-					return NewRet<Eigen::ComplexEigenSolver<R>>(L, Eigen::ComplexEigenSolver<R>{*MatrixRef<>{L}, !WantsBool(L, "no_eigenvectors")});
+					return NewRet<Eigen::ComplexEigenSolver<R>>(L, Eigen::ComplexEigenSolver<R>{*MatrixRef<>{L}, !WantsBool(L, "NoEigenvectors")});
 				}
 			}, {
 				"schur", [](lua_State * L)
 				{
-					return NewRet<Eigen::ComplexSchur<R>>(L, Eigen::ComplexSchur<R>{*MatrixRef<>{L}, !WantsBool(L, "no_u")});
+					return NewRet<Eigen::ComplexSchur<R>>(L, Eigen::ComplexSchur<R>{*MatrixRef<>{L}, !WantsBool(L, "NoU")});
 				}
 			},
 			{ nullptr, nullptr }
@@ -93,22 +91,22 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			{
 				"eigenSolver", [](lua_State * L)
 				{
-					return NewRet<Eigen::EigenSolver<R>>(L, Eigen::EigenSolver<R>{*MatrixRef<>{L}, !WantsBool(L, "no_eigenvectors")});
+					return NewRet<Eigen::EigenSolver<R>>(L, Eigen::EigenSolver<R>{*MatrixRef<>{L}, !WantsBool(L, "NoEigenvectors")});
 				}
 			}, {
 				"generalizedEigenSolver", [](lua_State * L)
 				{
-					return NewRet<Eigen::GeneralizedEigenSolver<R>>(L, Eigen::GeneralizedEigenSolver<R>{*MatrixRef<>{L}, GetR(L, 2), !WantsBool(L, "no_eigenvectors")});
+					return NewRet<Eigen::GeneralizedEigenSolver<R>>(L, Eigen::GeneralizedEigenSolver<R>{*MatrixRef<>{L}, GetR(L, 2), !WantsBool(L, "NoEigenvectors")});
 				}
 			}, {
-				"qz", [](lua_State * L)
+				"realQz", [](lua_State * L)
 				{
-					return NewRet<Eigen::RealQZ<R>>(L, Eigen::RealQZ<R>{*MatrixRef<>{L}, GetR(L, 2), !WantsBool(L, "no_qz")});
+					return NewRet<Eigen::RealQZ<R>>(L, Eigen::RealQZ<R>{*MatrixRef<>{L}, GetR(L, 2), !WantsBool(L, "NoQZ")});
 				}
 			}, {
 				"schur", [](lua_State * L)
 				{
-					return NewRet<Eigen::RealSchur<R>>(L, Eigen::RealSchur<R>{*MatrixRef<>{L}, !WantsBool(L, "no_u")});
+					return NewRet<Eigen::RealSchur<R>>(L, Eigen::RealSchur<R>{*MatrixRef<>{L}, !WantsBool(L, "NoU")});
 				}
 			},
 			{ nullptr, nullptr }
@@ -117,10 +115,10 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 		luaL_register(L, nullptr, methods);
 	}
 
-	//
+	// Helper to supply options to SVD solvers.
 	static unsigned int GetOpts (lua_State * L)
 	{
-		const char * names[] = { "full_u", "thin_u", "full_v", "thin_v", nullptr };
+		const char * names[] = { "FullU", "ThinU", "FullV", "ThinV", nullptr };
 		int flags[] = { Eigen::ComputeFullU, Eigen::ComputeThinU, Eigen::ComputeFullV, Eigen::ComputeThinV };
 		unsigned int opts = 0;
 
@@ -134,7 +132,6 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 		return opts;
 	}
 
-	//
 	NonIntMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -266,14 +263,14 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"selfAdjointEigenSolver", [](lua_State * L)
 				{
-					auto opts = WantsBool(L, "no_eigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors;
+					auto opts = WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors;
 
 					return NewRet<Eigen::SelfAdjointEigenSolver<R>>(L, Eigen::SelfAdjointEigenSolver<R>{*MatrixRef<>{L}, opts});
 				}
 			}, {
 				"selfadjointView", [](lua_State * L)
 				{
-					const char * names[] = { "lower", "upper", nullptr };
+					const char * names[] = { "Lower", "Upper", nullptr };
 
 					switch (luaL_checkoption(L, 2, nullptr, names))
 					{
@@ -294,7 +291,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"triangularView", [](lua_State * L)
 				{
-					const char * names[] = { "lower", "strictly_lower", "strictly_upper", "unit_lower", "unit_upper", "upper", nullptr };
+					const char * names[] = { "Lower", "StrictlyLower", "StrictlyUpper", "UnitLower", "UnitUpper", "Upper", nullptr };
 
 					switch (luaL_checkoption(L, 2, nullptr, names))
 					{
@@ -349,7 +346,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 	}
 };
 
-//
+// No-op for integer types.
 template<typename T, typename R> struct NonIntMethods<T, R, false> {
 	NonIntMethods (lua_State *) {}
 };

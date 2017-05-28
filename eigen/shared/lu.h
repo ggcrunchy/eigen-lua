@@ -76,7 +76,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivLU<U>, R> : 
 
 		luaL_register(L, nullptr, methods);
 
-		HouseholderExtensions(L);
+		QRExtensions(L);
 	}
 };
 

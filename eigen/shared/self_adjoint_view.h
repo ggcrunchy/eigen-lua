@@ -82,7 +82,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 						"triangularView", [](lua_State * L)
 						{
 							auto & v = *GetT(L);
-							const char * names[] = { "lower", "strictly_lower", "strictly_upper", "unit_lower", "unit_upper", "upper", nullptr };
+							const char * names[] = { "Lower", "StrictlyLower", "StrictlyUpper", "UnitLower", "UnitUpper", "Upper", nullptr };
 
 							#define PUSH_RES(METHOD) { EIGEN_PUSH_AUTO_RESULT(METHOD); }
 

@@ -157,13 +157,90 @@ template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U,
 																						\
 								return 0
 
+//
+#define PSEUDO_IN_PLACE(METHOD)	T & m = *GetT(L);		\
+								R temp = m.reverse();	\
+														\
+								m = temp;				\
+														\
+								return 0
+
+// Common form of resize methods.
+#define EIGEN_MATRIX_RESIZE(METHOD)	T & m = *GetT(L);										\
+									ResizeState rs{L, m};									\
+																							\
+									if (!rs.mHas2) m.METHOD(rs.mDim1, Eigen::NoChange);		\
+									else if (!rs.mHas1) m.METHOD(Eigen::NoChange, rs.mDim2);\
+									else m.METHOD(rs.mDim1, rs.mDim2);						\
+																							\
+									return 0
+
+//
 #define COEFF_MUTATE_METHOD(NAME, OP) EIGEN_REG(NAME, COEFF_MUTATE(OP))
 #define IN_PLACE_REDUCE_METHOD(NAME) EIGEN_REG(NAME, IN_PLACE_REDUCE(NAME))
+#define PSEUDO_IN_PLACE_METHOD(NAME) EIGEN_REG(NAME, PSEUDO_IN_PLACE(NAME))
+#define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
 
 //
 template<typename T, typename R = T> struct WriteOps {
 	ADD_INSTANCE_GETTERS()
 
+	// State usable by any of the resize methods' overloads.
+	struct ResizeState {
+		int mDim1{1}, mDim2{1};
+		bool mHas1{true}, mHas2{true};
+
+		ResizeState (lua_State * L, const T & mat)
+		{
+			if (!lua_isnoneornil(L, 2))
+			{
+				lua_pushliteral(L, "NoChange");	// mat, a, b, "NoChange"
+
+				mHas1 = lua_equal(L, 2, -1) != 0;
+				mHas2 = lua_equal(L, 3, -1) != 0;
+
+				luaL_argcheck(L, mHas1 || mHas2, 1, "Must resize at least one dimension");
+
+				if (mHas1) mDim1 = LuaXS::Int(L, 2);
+				if (mHas2) mDim2 = LuaXS::Int(L, 3);
+			}
+
+			else
+			{
+				CheckVector(L, mat, 1);
+
+				int a = LuaXS::Int(L, 2);
+
+				if (mat.cols() == 1) mDim2 = a;
+
+				else mDim1 = a;
+			}
+		}
+	};
+
+	// Operations added for matrices.
+	template<bool = std::is_same<T, R>::value> void AddMatrix (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				EIGEN_MATRIX_RESIZE_METHOD(conservativeResize)
+			}, {
+				EIGEN_MATRIX_PAIR_VOID_METHOD(conservativeResizeLike)
+			}, {
+				EIGEN_MATRIX_RESIZE_METHOD(resize)
+			}, {
+				EIGEN_MATRIX_PAIR_VOID_METHOD(resizeLike)
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	};
+
+	// No-op when not a raw matrix.
+	template<> void AddMatrix<false> (lua_State *) {}
+
+	//
 	template<bool = IsXpr<T>::value> void AddNonXpr (lua_State * L) // todo: can probably be more precise, e.g. blocks of maps with inner or outer stride
 	{
 		luaL_Reg methods[] = {
@@ -178,8 +255,22 @@ template<typename T, typename R = T> struct WriteOps {
 		luaL_register(L, nullptr, methods);
 	}
 
-	template<> void AddNonXpr<true> (lua_State *) {}
+	//
+	template<> void AddNonXpr<true> (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				PSEUDO_IN_PLACE_METHOD(reverseInPlace)
+			}, {
+				PSEUDO_IN_PLACE_METHOD(transposeInPlace)
+			},
+			{ nullptr, nullptr }
+		};
 
+		luaL_register(L, nullptr, methods);
+	}
+
+	//
 	template<bool = !std::is_same<R, BoolMatrix>::value> void AddNonBool (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -192,8 +283,6 @@ template<typename T, typename R = T> struct WriteOps {
 				}
 			}, {
 				COEFF_MUTATE_METHOD(coeffAddInPlace, +=)
-			}, {
-				COEFF_MUTATE_METHOD(coeffAssign, =)
 			}, {
 				COEFF_MUTATE_METHOD(coeffDivInPlace, /=)
 			}, {
@@ -227,8 +316,6 @@ template<typename T, typename R = T> struct WriteOps {
 					return SelfForChaining(L);
 				}
 			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setIdentity)
-			}, {
 				"setLinSpaced", [](lua_State * L)
 				{
 					T & m = *GetT(L);
@@ -259,6 +346,7 @@ template<typename T, typename R = T> struct WriteOps {
 		luaL_register(L, nullptr, methods);
 	}
 
+	//
 	template<> void AddNonBool<false> (lua_State * L) {}
 
 	WriteOps (lua_State * L)
@@ -269,6 +357,8 @@ template<typename T, typename R = T> struct WriteOps {
 				{
 					MUTATE(=);
 				}
+			}, {
+				COEFF_MUTATE_METHOD(coeffAssign, =)
 			}, {
 				EIGEN_MATRIX_SET_SCALAR_METHOD(fill)
 			}, {
@@ -315,7 +405,13 @@ template<typename T, typename R = T> struct WriteOps {
 
 		luaL_register(L, nullptr, methods);
 
+		AddMatrix(L);
 		AddNonBool(L);
 		AddNonXpr(L);
 	}
+};
+
+// When the underlying matrix is a constant, leave the write ops out.
+template<typename U, int O, typename S, typename R> struct WriteOps<Eigen::Map<const U, O, S>, R> {
+	WriteOps (lua_State *) {}
 };

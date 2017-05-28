@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "arith_ops.h"
 #include "write_ops.h"
+#include "xpr_ops.h"
 #include <Eigen/Eigen>
 
 //
@@ -59,10 +60,13 @@ template<typename T, typename R> struct AttachBlockMethods {
 
 		ArithOps<T, R> ao{L};
 		WriteOps<T, R> wo{L};
+		XprOps<T, R> xo{L}; // does special handling to avoid either xprs of xprs or xprs of a common temporary
 	}
 };
 
-//
+/****************
+* Block methods *
+****************/
 template<typename U, int Rows, int Cols, bool InnerPanel, typename R> struct AttachMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, R> : AttachBlockMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, R> {
 	AttachMethods (lua_State * L) : AttachBlockMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, R>(L)
 	{
@@ -90,7 +94,9 @@ template<typename U, int R, int C, bool InnerPanel> struct AuxTypeName<Eigen::Bl
 	}
 };
 
-//
+/*******************
+* Diagonal methods *
+*******************/
 template<typename U, int I, typename R> struct AttachMethods<Eigen::Diagonal<U, I>, R> : AttachBlockMethods<Eigen::Diagonal<U, I>, R> {
 	AttachMethods (lua_State * L) : AttachBlockMethods<Eigen::Diagonal<U, I>, R>(L)
 	{
@@ -108,7 +114,9 @@ template<typename U, int I> struct AuxTypeName<Eigen::Diagonal<U, I>> {
 	}
 };
 
-//
+/**********************
+* VectorBlock methods *
+**********************/
 template<typename U, typename R> struct AttachMethods<Eigen::VectorBlock<U>, R> : AttachBlockMethods<Eigen::VectorBlock<U>, R> {
 	AttachMethods (lua_State * L) : AttachBlockMethods<Eigen::VectorBlock<U>, R>(L)
 	{

@@ -25,8 +25,8 @@
 
 #include "CoronaLua.h"
 #include "CoronaLibrary.h"
+#include "utils/Blob.h"
 #include "utils/Thread.h"
-#include "ByteReader.h"
 
 // Propagate asserts to Lua.
 #ifndef eigen_assert
@@ -53,7 +53,7 @@ template<typename M, bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && 
 			{
 				"Umeyama", [](lua_State * L)
 				{
-					return NewRet<M>(L, Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "no_scaling", 3)));	// src, dst[, no_scaling], xform
+					return NewRet<M>(L, Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "NoSaling", 3)));// src, dst[, no_scaling], xform
 				}
 			},
 			{ nullptr, nullptr }
@@ -99,40 +99,44 @@ template<typename M> static void AddType (lua_State * L)
 			{
 				return NewRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Make(L, LuaXS::Int(L, 1)));
 			}
-		}, {
-			"Matrix", [](lua_State * L)
+		}, 
+	#ifdef WANT_MAP
+		{
+			"MatrixFromMemory", [](lua_State * L)
 			{
-				if (!lua_isnoneornil(L, 1))
-				{
-					int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
+				BlobXS::State state{L, 1};
+				
+				int m = luaL_checkint(L, 2), n = luaL_optint(L, 3, m);
+				auto memory = state.PointToDataIfBound(L, 0, 0, n, m, 0, sizeof(M::Scalar)); // TODO: might be resizable...
 
-					New<M>(L, m, n);// m[, n], M
+				//
+				if (memory)
+				{
+					Eigen::Map<M> map(reinterpret_cast<M::Scalar *>(memory), m, n);
+
+					New<Eigen::Map<M>>(L, std::move(map));	// memory, m[, n], map
+					GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "map_bytes", 1);
 				}
 
-				else New<M>(L);	// M
+				//
+				else
+				{
+					luaL_argcheck(L, !state.Bound() && lua_objlen(L, 1) >= m * n * sizeof(M::Scalar), 1, "Not enough memory for requested dimensions");
+
+					const char * str = luaL_checkstring(L, 1);
+
+					Eigen::Map<const M> map(reinterpret_cast<const M::Scalar *>(str), m, n);
+
+					New<Eigen::Map<const M>>(L, std::move(map));// memory, m[, n], map
+					GetTypeData<Eigen::Map<const M>>(L)->RefAt(L, "map_bytes", 1);
+				}
 
 				return 1;
 			}
 		}, 
-	#ifdef WANT_MAP
-				/*
-		{
-			"MatrixFromMemory", [](lua_State * L)
-			{
-				ByteReader memory{L, 1}; // TODO: rather, this should be a MemoryBlob or string
-
-				if (!memory.mBytes) lua_error(L);
-
-				int m = luaL_checkint(L, 2), n = luaL_optint(L, 3, m);
-
-				Eigen::Map<M> map(static_cast<const M::Scalar *>(memory.mBytes), m, n);
-
-				New<Eigen::Map<M>>(L, std::move(map));	// memory, m[, n], map
-				GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "bytes", 1);
-
-				return 1;
-			}
-		}, {
+	#endif
+	#ifdef WANT_MAP_WITH_CUSTOM_STRIDE
+		/*{
 			"MatrixFromMemoryWithInnerStride", [](lua_State * L)
 			{
 				lua_settop(L, 4);	// memory, m[, n], stride
@@ -195,6 +199,20 @@ template<typename M> static void AddType (lua_State * L)
 		},*/
 	#endif
 		{
+			"NewMatrix", [](lua_State * L)
+			{
+				if (!lua_isnoneornil(L, 1))
+				{
+					int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
+
+					New<M>(L, m, n);// m[, n], M
+				}
+
+				else New<M>(L);	// M
+
+				return 1;
+			}
+		}, {
 			"Ones", [](lua_State * L)
 			{
 				int m = LuaXS::Int(L, 1), n = luaL_optint(L, 2, m);
@@ -290,12 +308,6 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }
-		lua_pushcfunction(L, [](lua_State * L) {
-			return NewRet<BoolMatrix>(L, *LuaXS::UD<BoolMatrix>(L, 1));
-		});	// meta, push
-
-		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ..., ref = push }
-		// ^^^ TODO: this is probably no longer necessary, since BoolMatrix is always present by design
 	#endif
 
 #ifdef WANT_INT

@@ -26,13 +26,11 @@
 #include <Eigen/Eigen>
 #include "utils/LuaEx.h"
 #include "config.h"
-#include "complex.h"
 #include "types.h"
 #include "utils.h"
 #include "bool_matrix.h"
 #include "common.h"
 #include "complex_dependent.h"
-#include "map_dependent.h"
 #include "non_int.h"
 #include <type_traits>
 
@@ -44,7 +42,6 @@ template<typename T, typename R> struct AttachMatrixMethods {
 	{
 		CommonMethods<T, R>{L};
 		ComplexDependentMethods<T, R>{L};
-		MapDependentMethods<T, R>{L};
 		NonIntMethods<T, R>{L};
 
 		// Hook up routines to push a matrix, e.g. from another shared library, and with similar

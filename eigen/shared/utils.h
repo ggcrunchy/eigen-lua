@@ -24,7 +24,10 @@
 #pragma once
 
 #include "CoronaLua.h"
+#include "utils/LuaEx.h"
+#include "ByteReader.h"
 #include <Eigen/Eigen>
+#include <complex>
 
 // Vectorwise approach to use, and a helper to fetch it from the stack.
 enum VectorwiseOption { eNotVectorwise, eColwise, eRowwise };
@@ -57,6 +60,54 @@ inline bool WantsBool (lua_State * L, const char * str, int arg = -1)
 	lua_pop(L, 1);	// ..., arg, ...
 
 	return bWants;
+}
+
+// Helper to read complex numbers in various formats.
+template<typename T> static std::complex<T> Complex (lua_State * L, int arg)
+{
+	switch (lua_type(L, arg))
+	{
+	case LUA_TNUMBER:
+		return std::complex<T>{static_cast<T>(lua_tonumber(L, arg)), static_cast<T>(0)};
+	case LUA_TTABLE:
+		arg = CoronaLuaNormalize(L, arg);
+
+		lua_rawgeti(L, arg, 1);	// ..., complex, ..., r
+		lua_rawgeti(L, arg, 2);	// ..., complex, ..., r, i
+
+		{
+			double r = luaL_optnumber(L, -2, 0.0), i = luaL_optnumber(L, -1, 0.0);
+
+			lua_pop(L, 2);	// ..., complex, ...
+
+			return std::complex<T>{static_cast<T>(r), static_cast<T>(i)};
+		}
+	default:
+		ByteReader reader{L, arg};
+
+		luaL_argcheck(L, reader.mBytes && reader.mCount >= sizeof(std::complex<T>), arg, "Invalid complex number");
+
+		std::complex<T> comp;
+
+		memcpy(&comp, reader.mBytes, sizeof(std::complex<T>));
+
+		return comp;
+	}
+}
+
+// Specialize PushArg() for complex types to streamline code elsewhere, e.g. in macros.
+template<> inline void LuaXS::PushArg<std::complex<double>> (lua_State * L, std::complex<double> c)
+{
+	lua_createtable(L, 2, 0);	// ..., c
+	lua_pushnumber(L, c.real());// ..., c, c.r
+	lua_rawseti(L, -2, 1);	// ..., c = { r }
+	lua_pushnumber(L, c.imag());// ..., c, c.i
+	lua_rawseti(L, -2, 2);	// ..., c = { r, i }
+}
+
+template<> inline void LuaXS::PushArg<std::complex<float>> (lua_State * L, std::complex<float> c)
+{
+	LuaXS::PushArg(L, std::complex<double>{c.real(), c.imag()});
 }
 
 // Helper to fetch a scalar from the stack.

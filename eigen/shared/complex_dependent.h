@@ -87,7 +87,7 @@ template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
 	ADD_INSTANCE_GETTERS()
 
 	// Version of methods when we have a matrix or basic map.
-	template<bool = IsStrideFree<T>::value> void AddIfNormalStride (lua_State * L)
+	template<bool = HasNormalStride<T>::value> void AddIfNormalStride (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

@@ -25,11 +25,9 @@
     <ClInclude Include="..\shared\xpr_ops.h" />
     <ClInclude Include="..\shared\bool_matrix.h" />
     <ClInclude Include="..\shared\common.h" />
-    <ClInclude Include="..\shared\complex.h" />
     <ClInclude Include="..\shared\config.h" />
     <ClInclude Include="..\shared\implementation.h" />
     <ClInclude Include="..\shared\macros.h" />
-    <ClInclude Include="..\shared\map_dependent.h" />
     <ClInclude Include="..\shared\matrix.h" />
     <ClInclude Include="..\shared\complex_dependent.h" />
     <ClInclude Include="..\shared\non_int.h" />

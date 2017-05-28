@@ -68,13 +68,13 @@ template<typename T, typename R> struct SolverMethodsBase {
 		switch (GetT(L)->info())
 		{
 		case Eigen::Success:
-			lua_pushliteral(L, "success");	// ..., "success"
+			lua_pushliteral(L, "Success");	// ..., "Success"
 			break;
 		case Eigen::NumericalIssue:
-			lua_pushliteral(L, "numerical_issue");	// ..., "numerical_issue"
+			lua_pushliteral(L, "NumericalIssue");	// ..., "NumericalIssue"
 			break;
 		default:	// Errors trapped by asserts
-			lua_pushliteral(L, "no_convergence");	// ..., "no_convergence"
+			lua_pushliteral(L, "NoConvergence");// ..., "NoConvergence"
 		}
 
 		return 1;
@@ -92,16 +92,16 @@ template<typename T, typename R> struct SolverMethodsBase {
 	template<bool = true> static int SetThreshold (lua_State * L)
 	{
 		lua_settop(L, 2);	// solver, ..., how
-		lua_pushliteral(L, "default");	// solver, ..., how, "default"
+		lua_pushliteral(L, "Default");	// solver, ..., how, "Default"
 
 		if (!lua_equal(L, 2, 3)) GetT(L)->setThreshold(LuaXS::GetArg<Real>(L, 2));
 
 		else GetT(L)->setThreshold(Eigen::Default_t{});
 
-		return SelfForChaining(L);	// solver, ..., how, "default", solver
+		return SelfForChaining(L);	// solver, ..., how, "Default", solver
 	}
 
-	template<bool = true> void HouseholderExtensions (lua_State * L)
+	template<bool = true> void QRExtensions (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -117,9 +117,9 @@ template<typename T, typename R> struct SolverMethodsBase {
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rank)
 			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(threshold)
-			}, {
 				"setThreshold", SetThreshold<>
+			}, {
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(threshold)
 			},
 			{ nullptr, nullptr }
 		};

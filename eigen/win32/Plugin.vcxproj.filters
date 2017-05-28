@@ -6,7 +6,6 @@
   <ItemGroup>
     <ClInclude Include="..\shared\config.h" />
     <ClInclude Include="..\shared\utils.h" />
-    <ClInclude Include="..\shared\complex.h" />
     <ClInclude Include="..\shared\types.h" />
     <ClInclude Include="..\shared\bool_matrix.h" />
     <ClInclude Include="..\shared\macros.h" />
@@ -14,9 +13,6 @@
       <Filter>methods</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\non_int.h">
-      <Filter>methods</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\map_dependent.h">
       <Filter>methods</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\complex_dependent.h">

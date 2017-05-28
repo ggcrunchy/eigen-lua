@@ -180,13 +180,13 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			}, {
 				"solve", [](lua_State * L)
 				{
-					if (WantsBool(L, "on_the_right")) return NewRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(GetR(L, 2)));
+					if (WantsBool(L, "OnTheRight")) return NewRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(GetR(L, 2)));
 					else return NewRet<R>(L, GetT(L)->solve(GetR(L, 2)));
 				}
 			}, {
 				"solveInPlace", [](lua_State * L) // todo: stumped here with TV<Transpose<Map<Matrix, 0, InnerStride>>,9>
 				{
-					if (WantsBool(L, "on_the_right")) GetT(L)->solveInPlace<Eigen::OnTheRight>(GetR(L, 2));
+					if (WantsBool(L, "OnTheRight")) GetT(L)->solveInPlace<Eigen::OnTheRight>(GetR(L, 2));
 					else GetT(L)->solveInPlace(GetR(L, 2));
 
 					return 0;

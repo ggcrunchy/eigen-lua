@@ -29,22 +29,15 @@
 #include "bool_matrix.h"
 
 //
-#define EIGEN_REL_OP(OP)	auto td = GetTypeData<BoolMatrix>(L);								\
-																								\
-							luaL_argcheck(L, td, 1, "BoolMatrix type unavailable");				\
-																								\
-							BoolMatrix bm;														\
-																								\
-							if (HasType<T>(L, 2)) bm = GetT(L)->array() OP GetT(L, 2)->array();	\
-							else																\
-							{																	\
-								ArgObjectR<R> ao{L, 2};											\
-																								\
-								if (ao.mObject) bm = GetT(L)->array() OP ao.mObject->array();	\
-								else bm = GetT(L)->array() OP ao.mScalar;						\
-							}																	\
-																								\
-							PUSH_TYPED_DATA(bm)
+#define EIGEN_REL_OP(OP)	if (!HasType<T>(L, 2)) 																		\
+							{																							\
+								ArgObjectR<R> ao{L, 2};																	\
+																														\
+								if (ao.mObject) return NewRet<BoolMatrix>(L, GetT(L)->array() OP ao.mObject->array());	\
+								else return NewRet<BoolMatrix>(L, GetT(L)->array() OP ao.mScalar);						\
+							}																							\
+																														\
+							else return NewRet<BoolMatrix>(L, GetT(L)->array() OP GetT(L, 2)->array())
 
 //
 #define EIGEN_AS_ARRAY(METHOD)	return NewRet<R>(L, GetT(L)->array().METHOD())
@@ -77,9 +70,6 @@
 																	else return NewRet<R>(L, GetT(L)->METHOD(ao.mScalar))
 
 //
-#define EIGEN_MATRIX_GET_SCALAR(METHOD)	return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD())
-
-//
 #define EIGEN_MATRIX_PAIR_VOID(METHOD)	GetT(L)->METHOD(GetR(L, 2));\
 																	\
 										return 0
@@ -88,7 +78,7 @@
 																												\
 									if (how == eNotVectorwise)													\
 									{																			\
-										EIGEN_MATRIX_GET_SCALAR(METHOD);										\
+										EIGEN_MATRIX_PUSH_VALUE(METHOD);										\
 									}																			\
 																												\
 									else																		\
@@ -164,7 +154,6 @@
 #define EIGEN_MATRIX_GET_MATRIX_INDEX_PAIR_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX_INDEX_PAIR(NAME))
 #define EIGEN_MATRIX_GET_MATRIX_MATRIX_PAIR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX_MATRIX_PAIR(NAME))
 #define EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR(NAME))
-#define EIGEN_MATRIX_GET_SCALAR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_GET_SCALAR(NAME))
 #define EIGEN_MATRIX_PAIR_VOID_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PAIR_VOID(NAME))
 #define EIGEN_MATRIX_PUSH_VALUE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PUSH_VALUE(NAME))
 #define EIGEN_MATRIX_REDUCE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_REDUCE(NAME))

@@ -151,16 +151,16 @@ template<typename T, typename R> struct CommonMethods {
 	{
 		luaL_Reg methods[] = {
 			{
-				EIGEN_MATRIX_GET_MATRIX_METHOD(adjoint)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(allFinite)
-			}, {
 				EIGEN_ARRAY_METHOD(acos)
 			}, {
 				"add", [](lua_State * L)
 				{
 					NO_MUTATE(+);
 				}
+			}, {
+				EIGEN_MATRIX_GET_MATRIX_METHOD(adjoint)
+			}, {
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(allFinite)
 			}, {
 				EIGEN_ARRAY_METHOD(arg)
 			}, {
@@ -409,7 +409,53 @@ template<typename T, typename R> struct CommonMethods {
 
 					else return NewRet<R>(L, GetT(L)->replicate(a, LuaXS::Int(L, 3)));
 				}
+			},
+		#ifdef WANT_MAP
+			{
+				"reshape", [](lua_State * L)
+				{
+					using M = MatrixOf<T::Scalar>;
+
+					T & m = *GetT(L);
+					Eigen::Map<M> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
+
+					New<Eigen::Map<M>>(L, std::move(map));	// mat, m, n, map
+					GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "mapped_from", 1);
+
+					return 1;
+				}
+			}, 
+		#endif
+		#ifdef WANT_MAP_WITH_CUSTOM_STRIDE
+			{
+				using M = MatrixOf<T::Scalar>;
+
+				"reshapeWithInnerStride", [](lua_State * L)
+				{
+					T & m = *GetT(L);
+					Eigen::Map<M, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
+
+					New<decltype(map)>(L, std::move(map));
+					GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
+
+					return 1;
+				}
 			}, {
+				"reshapeWithOuterStride", [](lua_State * L)
+				{
+					using M = MatrixOf<T::Scalar>;
+
+					T & m = *GetT(L);
+					Eigen::Map<M, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
+
+					New<decltype(map)>(L, std::move(map));
+					GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
+
+					return 1;
+				}
+			},
+		#endif
+			{
 				XFORM_METHOD(reverse)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
@@ -452,7 +498,7 @@ template<typename T, typename R> struct CommonMethods {
 					return Print(L, *GetT(L));
 				}
 			}, {
-				EIGEN_MATRIX_GET_SCALAR_METHOD(trace)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(trace)
 			}, {
 				"tranpose", Transposer<T>::Do
 			}, {
@@ -478,7 +524,7 @@ template<typename T, typename R> struct CommonMethods {
 					return NewRet<R>(L, AsVector<T>::To(L).unitOrthogonal());
 				}
 			}, {
-				EIGEN_MATRIX_GET_SCALAR_METHOD(value)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(value)
 			}, {
 				"visit", [](lua_State * L)
 				{

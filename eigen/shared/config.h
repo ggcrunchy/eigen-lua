@@ -43,7 +43,7 @@
 	#define PLUGIN_NAME luaopen_plugin_eigendouble
 
 	#define WANT_DOUBLE
-//	#define WANT_MAP
+	#define WANT_MAP
 #elif defined(EIGEN_CFLOAT_ONLY)
 	#define PLUGIN_SUFFIX eigencfloat
 	#define PLUGIN_NAME luaopen_plugin_eigencfloat

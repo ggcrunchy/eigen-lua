@@ -82,7 +82,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposi
 		T & hd = *GetInstance<T>(L);
 		Eigen::ComplexSchur<R> schur;
 
-		schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "no_u"));
+		schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "NoU"));
 
 		return NewRet<Eigen::ComplexSchur<R>>(L, std::move(schur));
 	}
@@ -93,12 +93,11 @@ template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposi
 		auto & hd = *GetT(L);
 		Eigen::RealSchur<R> schur;
 
-		schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "no_u"));
+		schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "NoU"));
 
 		return NewRet<Eigen::RealSchur<R>>(L, std::move(schur));
 	}
 
-	//
 	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::HessenbergDecomposition<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
@@ -168,7 +167,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<
 					auto & tri = *GetT(L);
 					Eigen::GeneralizedSelfAdjointEigenSolver<R> gsaes;
 
-					gsaes.computeFromTridiagonal(tri.diagonal(), tri.subDiagonal(), WantsBool(L, "no_eigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors);
+					gsaes.computeFromTridiagonal(tri.diagonal(), tri.subDiagonal(), WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors);
 
 					return NewRet<Eigen::GeneralizedSelfAdjointEigenSolver<R>>(L, std::move(gsaes));
 				}
@@ -186,7 +185,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<
 					auto & tri = *GetT(L);
 					Eigen::SelfAdjointEigenSolver<R> saes;
 
-					saes.computeFromTridiagonal(tri.diagonal(), tri.subDiagonal(), WantsBool(L, "no_eigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors);
+					saes.computeFromTridiagonal(tri.diagonal(), tri.subDiagonal(), WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors);
 
 					return NewRet<Eigen::SelfAdjointEigenSolver<R>>(L, std::move(saes));
 				}

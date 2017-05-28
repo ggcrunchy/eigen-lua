@@ -41,9 +41,9 @@ template<typename T, int O = 0, typename S = Eigen::Stride<0, 0>> using MappedRo
 template<typename S, int Rows = Eigen::Dynamic, int Cols = Eigen::Dynamic> using MatrixOf = Eigen::Matrix<S, Rows, Cols>;
 
 // Trait to detect maps with non-trivial strides.
-template<typename T> struct IsStrideFree : std::false_type {};
-template<typename T, int Rows, int Cols, int Options, int MaxRows, int MaxCols> struct IsStrideFree<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>> : std::true_type {};
-template<typename U> struct IsStrideFree<Eigen::Map<U>> : std::true_type {};
+template<typename T> struct HasNormalStride : std::false_type {};
+template<typename T, int Rows, int Cols, int Options, int MaxRows, int MaxCols> struct HasNormalStride<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>> : std::true_type {};
+template<typename U> struct HasNormalStride<Eigen::Map<U>> : std::true_type {};
 
 // Prefixed to type data registry keys, allowing them to largely reuse the type's own name
 // while still playing nicely with luaL_newmetatable(), whose current implementation also
@@ -54,7 +54,7 @@ template<typename U> struct IsStrideFree<Eigen::Map<U>> : std::true_type {};
 struct TypeData {
 	const char * mName;	// Cached full name
 	int mGetAnObjectRef;// Function used to get an instance from the cache, if available
-	int mPushRef;	// Function used to push matrix on stack
+	int mPushRef{LUA_NOREF};// Function used to push matrix on stack
 	int mRegisterObjectRef;	// Function used to add the object to a caching context, when possible
 	int mRemoveObjectRef;	// Function used to send the object back to the cache
 	int mSelectRef{LUA_NOREF};	// Method used to select some matrix / scalar combination
@@ -194,7 +194,7 @@ template<> static void * GetTypeKey<BoolMatrix> (lua_State * L, TypeData * td)
 template<typename T> static TypeData * AddTypeData (lua_State * L, bool bCreateIfMissing)
 {
 	// Build up the type's name / type data's key. If the library is loaded in parts, e.g. as
-	// eigencore + eigendouble, a type might already exist, so this is checked first. Failing
+	// eigencore + eigendouble, a type might alreadyf exist, so this is checked first. Failing
 	// that, we move on to actual creation, if desired.
 	luaL_Buffer buff;
 	
@@ -388,7 +388,7 @@ template<typename T> void CheckVector (lua_State * L, const T & mat, int arg)
 
 // TODO: this might change if legitimate vectors are added, which seems increasingly likely.
 // Interpret a vector-shaped matrix as a mapped vector, for use in APIs expecting vectors.
-template<typename T, bool = IsStrideFree<T>::value> struct AsVector {
+template<typename T, bool = HasNormalStride<T>::value> struct AsVector {
 	using Type = Eigen::Map<ColVector<typename T::Scalar>>;
 
 	static void New (Type * v, T * m)

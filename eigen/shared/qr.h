@@ -26,8 +26,8 @@
 #include "solver_base.h"
 
 //
-template<typename U, typename R> struct HouseholderMethodsBase : SolverMethodsBase<U, R> {
-	HouseholderMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
+template<typename U, typename R> struct QRMethodsBase : SolverMethodsBase<U, R> {
+	QRMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -44,9 +44,11 @@ template<typename U, typename R> struct HouseholderMethodsBase : SolverMethodsBa
 	}
 };
 
-//
-template<typename U, typename R> struct AttachMethods<Eigen::HouseholderQR<U>, R> : HouseholderMethodsBase<Eigen::HouseholderQR<U>, R> {
-	AttachMethods (lua_State * L) : HouseholderMethodsBase<Eigen::HouseholderQR<U>, R>(L)
+/************************
+* HouseholderQR methods *
+************************/
+template<typename U, typename R> struct AttachMethods<Eigen::HouseholderQR<U>, R> : QRMethodsBase<Eigen::HouseholderQR<U>, R> {
+	AttachMethods (lua_State * L) : QRMethodsBase<Eigen::HouseholderQR<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -64,16 +66,18 @@ template<typename U, typename R> struct AttachMethods<Eigen::HouseholderQR<U>, R
 SOLVER_TYPE_NAME(HouseholderQR);
 
 //
-template<typename U, typename R> struct HouseholderExMethodsBase : HouseholderMethodsBase<U, R> {
-	HouseholderExMethodsBase (lua_State * L) : HouseholderMethodsBase<U, R>(L)
+template<typename U, typename R> struct QRExMethodsBase : QRMethodsBase<U, R> {
+	QRExMethodsBase (lua_State * L) : QRMethodsBase<U, R>(L)
 	{
-		HouseholderExtensions(L);
+		QRExtensions(L);
 	}
 };
 
-//
-template<typename U, typename R> struct AttachMethods<Eigen::ColPivHouseholderQR<U>, R> : HouseholderExMethodsBase<Eigen::ColPivHouseholderQR<U>, R> {
-	AttachMethods (lua_State * L) : HouseholderExMethodsBase<Eigen::ColPivHouseholderQR<U>, R>(L)
+/******************************
+* ColPivHouseholderQR methods *
+******************************/
+template<typename U, typename R> struct AttachMethods<Eigen::ColPivHouseholderQR<U>, R> : QRExMethodsBase<Eigen::ColPivHouseholderQR<U>, R> {
+	AttachMethods (lua_State * L) : QRExMethodsBase<Eigen::ColPivHouseholderQR<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -94,9 +98,11 @@ template<typename U, typename R> struct AttachMethods<Eigen::ColPivHouseholderQR
 
 SOLVER_TYPE_NAME(ColPivHouseholderQR);
 
-//
-template<typename U, typename R> struct AttachMethods<Eigen::CompleteOrthogonalDecomposition<U>, R> : HouseholderExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R> {
-	AttachMethods (lua_State * L) : HouseholderExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R>(L)
+/******************************************
+* CompleteOrthogonalDecomposition methods *
+******************************************/
+template<typename U, typename R> struct AttachMethods<Eigen::CompleteOrthogonalDecomposition<U>, R> : QRExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R> {
+	AttachMethods (lua_State * L) : QRExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -121,9 +127,11 @@ template<typename U, typename R> struct AttachMethods<Eigen::CompleteOrthogonalD
 
 SOLVER_TYPE_NAME(CompleteOrthogonalDecomposition);
 
-//
-template<typename U, typename R> struct AttachMethods<Eigen::FullPivHouseholderQR<U>, R> : HouseholderExMethodsBase<Eigen::FullPivHouseholderQR<U>, R> {
-	AttachMethods (lua_State * L) : HouseholderExMethodsBase<Eigen::FullPivHouseholderQR<U>, R>(L)
+/*******************************
+* FullPivHouseholderQR methods *
+*******************************/
+template<typename U, typename R> struct AttachMethods<Eigen::FullPivHouseholderQR<U>, R> : QRExMethodsBase<Eigen::FullPivHouseholderQR<U>, R> {
+	AttachMethods (lua_State * L) : QRExMethodsBase<Eigen::FullPivHouseholderQR<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
 			{

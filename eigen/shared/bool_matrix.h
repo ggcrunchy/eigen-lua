@@ -174,6 +174,7 @@ template<> struct AttachMethods<BoolMatrix> {
 
 		luaL_register(L, nullptr, methods);
 
+		WriteOps<BoolMatrix> wo{L};
 		XprOps<BoolMatrix> xo{L};
 
 	#endif
