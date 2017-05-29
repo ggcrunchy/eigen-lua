@@ -43,42 +43,6 @@ template<typename T, typename R> struct AttachMatrixMethods {
 		CommonMethods<T, R>{L};
 		ComplexDependentMethods<T, R>{L};
 		NonIntMethods<T, R>{L};
-
-		// Hook up routines to push a matrix, e.g. from another shared library, and with similar
-		// reasoning to use such matrices in BoolMatrix::select().
-		auto td = GetTypeData<T>(L);
-
-		lua_pushcfunction(L, [](lua_State * L) {
-			return NewRet<R>(L, *LuaXS::UD<T>(L, 1));
-		});	// meta, push
-
-		td->mPushRef = lua_ref(L, 1);	// meta; registry = { ...[, select], ref = push }
-
-		// Selection simply resolves to a matrix type, so reuse the logic if available.
-		if (!std::is_same<T, R>::value)
-		{
-			auto rtd = GetTypeData<R>(L);
-
-			if (rtd) td->mSelectRef = rtd->mSelectRef;
-		}
-
-		// Failing the above, supply a new function.
-		if (td->mSelectRef != LUA_NOREF)
-		{
-			lua_pushcfunction(L, [](lua_State * L) {
-				auto bm = AttachMethods<BoolMatrix>::GetT(L);
-
-				return NewRet<R>(L, WithMatrixScalarCombination<R>(L, [&bm](const R & m1, const R & m2) {
-					return bm->select(m1, m2);
-				}, [&bm](const R & m, const R::Scalar & s) {
-					return bm->select(m, s);
-				}, [&bm](const R::Scalar & s, const R & m) {
-					return bm->select(s, m);
-				}, 2, 3));
-			});	// meta, push, select
-
-			td->mSelectRef = lua_ref(L, 1);	// meta, push; registry = { ..., ref = select }
-		}
 	}
 };
 

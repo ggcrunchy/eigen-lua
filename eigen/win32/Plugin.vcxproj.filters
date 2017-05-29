@@ -67,6 +67,9 @@
     <ClInclude Include="..\shared\svd.h">
       <Filter>objects\solvers</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\stock_ops.h">
+      <Filter>methods</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="methods">

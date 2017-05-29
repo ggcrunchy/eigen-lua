@@ -34,24 +34,10 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	ADD_INSTANCE_GETTERS()
 
 	//
-	static void BaseDerivedSAV (lua_State * L)
+	template<bool = std::is_same<R::Scalar, bool>::value> static void AddNonBool (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
-				"assign", [](lua_State * L)
-				{
-					return 0;	// TODO
-				}
-			}, {
-				"coeffAssign", [](lua_State * L)
-				{
-					return 0;	// TODO
-				}
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
-			}, {
 				"rankUpdate", [](lua_State * L)
 				{
 					auto & v = *GetT(L);
@@ -71,8 +57,70 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 		luaL_register(L, nullptr, methods);
 	}
 
+	template<> static void AddNonBool<true> (lua_State *) {}
+
+	//
+	static void BaseDerivedSAV (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				"assign", [](lua_State * L)
+				{
+					return 0;	// TODO
+				}
+			}, {
+				"coeffAssign", [](lua_State * L)
+				{
+					return 0;	// TODO
+				}
+			}, {
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
+			}, {
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+
+		AddNonBool(L);
+	}
+
 	//
 	template<typename U> struct DerivedSAV {
+		//
+		template<bool = Eigen::NumTraits<R::Scalar>::IsComplex> static int EigenvaluesSAV (lua_State * L)
+		{
+			EIGEN_MATRIX_GET_MATRIX(eigenvalues);
+		}
+
+		template<> static int EigenvaluesSAV<false> (lua_State * L)
+		{
+			USING_COMPLEX_TYPE();
+			EIGEN_REAL_GET_COMPLEX(eigenvalues);
+		}
+
+		//
+		template<bool = Eigen::NumTraits<R::Scalar>::IsInteger> void AddNonInt (lua_State * L)
+		{
+			luaL_Reg methods[] = {
+				{
+					"eigenvalues", EigenvaluesSAV<>
+				}, {
+					EIGEN_PUSH_AUTO_RESULT_METHOD(ldlt) // n.b. earlier LDLT<T, UpLo> for normal matrices, i.e. not row-major, thus here
+				}, {
+					EIGEN_PUSH_AUTO_RESULT_METHOD(llt)	// ditto
+				}, {
+					EIGEN_MATRIX_PUSH_VALUE_METHOD(operatorNorm)
+				},
+				{ nullptr, nullptr }
+			};
+
+			luaL_register(L, nullptr, methods);
+		}
+
+		template<> void AddNonInt<true> (lua_State *) {}
+
 		//
 		template<typename V> struct NotMap {
 			NotMap (lua_State * L)
@@ -124,10 +172,6 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 				}, {
 					EIGEN_PUSH_AUTO_RESULT_METHOD(conjugate)
 				}, {
-					EIGEN_PUSH_AUTO_RESULT_METHOD(ldlt) // n.b. earlier LDLT<T, UpLo> for normal matrices, i.e. not row-major, thus here
-				}, {
-					EIGEN_PUSH_AUTO_RESULT_METHOD(llt)	// ditto
-				}, {
 					EIGEN_PUSH_AUTO_RESULT_METHOD(transpose)
 				},
 				{ nullptr, nullptr }
@@ -136,6 +180,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			luaL_register(L, nullptr, methods);
 
 			BaseDerivedSAV(L);
+			AddNonInt(L);
 
 			NotMap<U> nm{L};
 		}
@@ -163,34 +208,17 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	};
 
 	//
-	template<bool = Eigen::NumTraits<R::Scalar>::IsComplex> static int EigenvaluesSAV (lua_State * L)
-	{
-		EIGEN_MATRIX_GET_MATRIX(eigenvalues);
-	}
-
-	template<> static int EigenvaluesSAV<false> (lua_State * L)
-	{
-		USING_COMPLEX_TYPE();
-		EIGEN_REAL_GET_COMPLEX(eigenvalues);
-	}
-
-	//
 	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"asMatrix", AsMatrix<T, R>
 			}, {
-				"__call", [](lua_State * L)
-				{
-					return 1;	// TODO
-				}
+				"__call", Call<T>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(diagonal)
-			}, {
-				"eigenvalues", EigenvaluesSAV<>
 			}, {
 				"__gc", LuaXS::TypedGC<T>
 			}, {
@@ -222,8 +250,6 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 					*/
 					return 1;	// TODO
 				}
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(operatorNorm)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
 			},

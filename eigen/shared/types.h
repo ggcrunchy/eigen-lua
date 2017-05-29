@@ -26,6 +26,7 @@
 #include "CoronaLua.h"
 #include "utils/LuaEx.h"
 #include "utils/Thread.h"
+#include "utils.h"
 #include <Eigen/Eigen>
 #include <complex>
 #include <sstream>
@@ -50,8 +51,11 @@ template<typename U> struct HasNormalStride<Eigen::Map<U>> : std::true_type {};
 // uses the registry.
 #define TYPE_DATA_KEY_SIGNATURE "TD:"
 
-// Per-type data
+// Per-type data.
 struct TypeData {
+	// Various ways to acquire type data that might not yet be present.
+	enum Options { eDoNothing, eCreateIfMissing, eFetchIfMissing };
+
 	const char * mName;	// Cached full name
 	int mGetAnObjectRef;// Function used to get an instance from the cache, if available
 	int mPushRef{LUA_NOREF};// Function used to push matrix on stack
@@ -166,56 +170,67 @@ struct TypeData {
 // Matrices of booleans.
 typedef MatrixOf<bool> BoolMatrix;
 
-// Various ways to acquire type data that might not yet be present.
-enum TypeDataOptions { eDoNothing, eCreateIfMissing, eFetchIfMissing };
+// Trait that flags whether some type-related code should be generated (within this module)
+// for the matrix family in question.
+template<typename R> struct IsMatrixFamilyImplemented : std::false_type {};
 
-// Gets the key under which the cache binding logic is stored in the registry. Since boolean
-// matrices are by design part of the core and registered first, their own type data is used
-// as this key. The specialization accounts for this when the BoolMatrix type data itself is
-// created, which is done explicitly rather than lazily via a New(), and expects to pull the
-// aforementioned cache logic off the stack.
-// TODO: Because of this BoolMatrix's type data is everywhere, so EIGEN_REL_OP() can be tightened up
-template<typename T> static void * GetTypeKey (lua_State * L, TypeData *)
-{
-	return GetTypeData<BoolMatrix>(L, eFetchIfMissing);
-}
-
-template<> static void * GetTypeKey<BoolMatrix> (lua_State * L, TypeData * td)
-{
-	lua_insert(L, -2);	// ..., td, new_type
-	lua_pushlightuserdata(L, td);	// ..., td, new_type, key
-	lua_insert(L, -2);	// ..., td, key, new_type
-	lua_rawset(L, LUA_REGISTRYINDEX);	// ..., td; registry = { ..., [key] = new_type }
-
-	return td;
-}
-
-// Workhorse function that creates or fetches the type data.
-template<typename T> static TypeData * AddTypeData (lua_State * L, bool bCreateIfMissing)
-{
-	// Build up the type's name / type data's key. If the library is loaded in parts, e.g. as
-	// eigencore + eigendouble, a type might alreadyf exist, so this is checked first. Failing
-	// that, we move on to actual creation, if desired.
-	luaL_Buffer buff;
-	
-	luaL_buffinit(L, &buff);
-	luaL_addstring(&buff, TYPE_DATA_KEY_SIGNATURE "eigen.");
-
-	AuxTypeName<T>(&buff, L);
-
-	luaL_pushresult(&buff);	// ...[, new_type], name
-
-	const char * name = lua_tostring(L, -1);
-
-	lua_rawget(L, LUA_REGISTRYINDEX);	// ...[, new_type], td?
-
-	TypeData * td = !lua_isnil(L, -1) ? LuaXS::UD<TypeData>(L, -1) : nullptr;
-
-	lua_pop(L, 1);	// ...[, new_type]
-
-	if (!td && bCreateIfMissing)
+// Various logic used to create a new type.
+template<typename T, typename R> struct CreateTypeData {
+	// Gets the key under which the cache binding logic is stored in the registry. Since boolean
+	// matrices are by design part of the core and registered first, their own type data is used
+	// as this key. The specialization accounts for this when the BoolMatrix type data itself is
+	// created, which is done explicitly rather than lazily via a New(), and expects to pull the
+	// aforementioned cache logic off the stack.
+	// TODO: Because of this BoolMatrix's type data is everywhere, so EIGEN_REL_OP() can be tightened up
+	template<typename U = T> static void * GetTypeKey (lua_State * L, TypeData *)
 	{
-		td = LuaXS::NewTyped<TypeData>(L);	// ...[, new_type], td
+		return GetTypeData<BoolMatrix>(L, TypeData::eFetchIfMissing);
+	}
+
+	template<> static void * GetTypeKey<BoolMatrix> (lua_State * L, TypeData * td)
+	{
+		lua_insert(L, -2);	// ..., td, new_type
+		lua_pushlightuserdata(L, td);	// ..., td, new_type, key
+		lua_insert(L, -2);	// ..., td, key, new_type
+		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., td; registry = { ..., [key] = new_type }
+
+		return td;
+	}
+
+	// Add push and select functions, allowing interop with code that may be in other modules.
+	// The instance in question is converted to a temporary, so these are only available for
+	// types where this is possible.
+	template<bool = std::is_convertible<T, R>::value> struct AddPushAndSelect {
+		AddPushAndSelect (lua_State * L, TypeData * td)
+		{
+			lua_pushcfunction(L, [](lua_State * L) {
+				return NewRet<R>(L, *LuaXS::UD<T>(L, 1));
+			});	// meta, push
+			lua_pushcfunction(L, [](lua_State * L) {
+				auto bm = LuaXS::UD<BoolMatrix>(L, 1); // see the note in BoolMatrix::select()
+
+				return NewRet<R>(L, WithMatrixScalarCombination<R>(L, [&bm](const R & m1, const R & m2) {
+					return bm->select(m1, m2);
+				}, [&bm](const R & m, const R::Scalar & s) {
+					return bm->select(m, s);
+				}, [&bm](const R::Scalar & s, const R & m) {
+					return bm->select(s, m);
+				}, 2, 3));
+			});	// meta, push, select
+
+			td->mSelectRef = lua_ref(L, 1);	// ..., push; registry = { ..., ref = select }
+			td->mPushRef = lua_ref(L, 1);	// ...; registry = { ..., select, ref = push }
+		}
+	};
+
+	template<> struct AddPushAndSelect<false> {
+		AddPushAndSelect (lua_State *, TypeData *) {}
+	};
+
+	// Perform the actual creation, if possible for this sort of type.
+	template<bool = IsMatrixFamilyImplemented<R>::value> static TypeData * Do (lua_State * L, const char * name)
+	{
+		TypeData * td = LuaXS::NewTyped<TypeData>(L);	// ...[, new_type], td
 
 		// Register the new type data and fetch the cache binding logic.
 		void * key = GetTypeKey<T>(L, td);	// ..., td
@@ -231,7 +246,7 @@ template<typename T> static TypeData * AddTypeData (lua_State * L, bool bCreateI
 			auto td = GetTypeData<T>(L);
 
 			lua_getref(L, td->mWeakListsRef);	// object, weak_lists?
-			
+
 			if (!lua_isnil(L, -1))
 			{
 				for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1))
@@ -253,21 +268,34 @@ template<typename T> static TypeData * AddTypeData (lua_State * L, bool bCreateI
 		lua_pushcfunction(L, LuaXS::TypedGC<T>);// ..., new_type, opts, on_fetch
 		lua_setfield(L, -2, "on_fetch");// ..., new_type, opts = { on_cache, on_fetch = on_fetch }
 
-		// Bind the type to the cache and save the name for use down the road.
+		// Bind the type to the cache.
 		lua_call(L, 1, 3);	// ..., GetAnObject, RegisterObject, RemoveObject
-		lua_pushstring(L, name);// ..., GetAnObject, RegisterObject, RemoveObject, interned_name
-
-		td->mName = lua_tostring(L, -1);
-
-		lua_pop(L, 1);	// ..., GetAnObject, RegisterObject, RemoveObject
 
 		td->mRemoveObjectRef = lua_ref(L, 1);	// ..., GetAnObject, RegisterObject
 		td->mRegisterObjectRef = lua_ref(L, 1);	// ..., GetAnObject
 		td->mGetAnObjectRef = lua_ref(L, 1);// ...
+
+		// Hook up routines to push a matrix, e.g. from another shared library, and with similar
+		// reasoning to use such matrices in BoolMatrix::select().
+		AddPushAndSelect<> apas{L, td};
+
+		// Save the name for use down the road.
+		lua_pushstring(L, name);// ..., interned_name
+
+		td->mName = lua_tostring(L, -1);
+
+		lua_pop(L, 1);	// ...
+
+		return td;
 	}
 
-	return td;
-}
+	template<> static TypeData * Do<false> (lua_State * L, const char * name)
+	{
+		luaL_error(L, "Unable to implement %s\n", name);
+
+		return nullptr;
+	}
+};
 
 // Get a given type's data, if present. Since lookup involves building up a name, the pointer
 // is saved for subsequent calls. The most common use cases are HasType(), GetInstance(), and
@@ -276,11 +304,34 @@ template<typename T> static TypeData * AddTypeData (lua_State * L, bool bCreateI
 // the default is to not try to add an absent type. Special options exist to accommodate
 // object creation as well as operations like cast(), select(), and complex <-> real functions
 // that might cross shared library boundaries and only need to fetch already-loaded type data.
-template<typename T> TypeData * GetTypeData (lua_State * L, TypeDataOptions opts = eDoNothing)
+template<typename T, typename R = MatrixOf<typename T::Scalar>> TypeData * GetTypeData (lua_State * L, TypeData::Options opts = TypeData::eDoNothing)
 {
 	static ThreadXS::TLS<TypeData *> sThisType;
 
-	if (!sThisType && (opts == eCreateIfMissing || opts == eFetchIfMissing)) sThisType = AddTypeData<T>(L, opts == eCreateIfMissing);
+	if (!sThisType && (opts == TypeData::eCreateIfMissing || opts == TypeData::eFetchIfMissing))
+	{
+		// Build up the type's name / type data's key. If the library is loaded in parts, e.g. as
+		// eigencore + eigendouble, a type might already exist, so this is checked first. Failing
+		// that, we move on to actual creation, if desired.
+		luaL_Buffer buff;
+
+		luaL_buffinit(L, &buff);
+		luaL_addstring(&buff, TYPE_DATA_KEY_SIGNATURE "eigen.");
+
+		AuxTypeName<T>(&buff, L);
+
+		luaL_pushresult(&buff);	// ...[, new_type], name
+
+		const char * name = lua_tostring(L, -1);
+
+		lua_rawget(L, LUA_REGISTRYINDEX);	// ...[, new_type], td?
+
+		sThisType = !lua_isnil(L, -1) ? LuaXS::UD<TypeData>(L, -1) : nullptr;
+
+		lua_pop(L, 1);	// ...[, new_type]
+
+		if (!sThisType && opts == TypeData::eCreateIfMissing) sThisType = CreateTypeData<T, R>::Do(L, name);
+	}
 
 	return sThisType;
 }
@@ -329,7 +380,7 @@ template<typename T, typename R = MatrixOf<typename T::Scalar>> struct AttachMet
 template<typename T, typename ... Args> T * New (lua_State * L, Args && ... args)
 {
 	// Try to fetch an instance from the cache. If found, reuse its memory.
-	auto td = GetTypeData<T>(L, eCreateIfMissing);
+	auto td = GetTypeData<T>(L, TypeData::eCreateIfMissing);
 
 	lua_getref(L, td->mGetAnObjectRef);	// ..., GetAnObject
 	lua_call(L, 0, 1);	// ..., object?
@@ -462,11 +513,13 @@ template<typename R> R GetInstanceEx (lua_State * L, int arg = 1)
 	return temp;
 }
 
-// Standard boilerplate for getters, where we can expect the first parameter to actually have
-// the type in question (aside from cases like binary metamethods), while preferring a bit
-// more leeway for the rest ("R" originally meant "return value" but its scope has expanded a
-// bit; "right-hand side" also tends to fit). Thus the former is returned as a pointer while
-// the latter is a fresh matrix, which might have been resolved from some other type.
+// Standard boilerplate for getters. Aside from the case of binary metamethods, the first
+// type in a given method will be a "self" whose type we can assume, and thus we return a
+// pointer to an instance of that very type. Other arguments are generally given some leeway,
+// since they might be blocks, maps, transposes, etc. In these cases, the object is copied
+// to a new matrix (of some commonly resolved type) that gets returned; this is potentially
+// expensive, but offers flexibility. (The "R" originally stood for "return value", though
+// "raw", "right-hand side", and "resolved" tend to fit as well.) 
 #define ADD_INSTANCE_GETTERS()	static T * GetT (lua_State * L, int arg = 1) { return GetInstance<T>(L, arg); }	\
 								static R GetR (lua_State * L, int arg = 1) { return GetInstanceEx<R>(L, arg); }
 

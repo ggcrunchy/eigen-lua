@@ -150,16 +150,40 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	};
 
 	//
+	template<bool = Eigen::NumTraits<R::Scalar>::IsInteger> void AddNonInt (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				"solve", [](lua_State * L)
+				{
+					if (WantsBool(L, "OnTheRight")) return NewRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(GetR(L, 2)));
+					else return NewRet<R>(L, GetT(L)->solve(GetR(L, 2)));
+				}
+			}, {
+				"solveInPlace", [](lua_State * L) // todo: stumped here with TV<Transpose<Map<Matrix, 0, InnerStride>>,9>
+				{
+					if (WantsBool(L, "OnTheRight")) GetT(L)->solveInPlace<Eigen::OnTheRight>(GetR(L, 2));
+					else GetT(L)->solveInPlace(GetR(L, 2));
+
+					return 0;
+				}
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	}
+
+	template<> void AddNonInt<true> (lua_State *) {}
+
+	//
 	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"asMatrix", AsMatrix<T, R>
 			}, {
-				"__call", [](lua_State * L)
-				{
-					return 0;	// TODO
-				}
+				"__call", Call<T>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
@@ -177,20 +201,6 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			   EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
 			}, */{
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
-			}, {
-				"solve", [](lua_State * L)
-				{
-					if (WantsBool(L, "OnTheRight")) return NewRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(GetR(L, 2)));
-					else return NewRet<R>(L, GetT(L)->solve(GetR(L, 2)));
-				}
-			}, {
-				"solveInPlace", [](lua_State * L) // todo: stumped here with TV<Transpose<Map<Matrix, 0, InnerStride>>,9>
-				{
-					if (WantsBool(L, "OnTheRight")) GetT(L)->solveInPlace<Eigen::OnTheRight>(GetR(L, 2));
-					else GetT(L)->solveInPlace(GetR(L, 2));
-
-					return 0;
-				}
 			},
 			{ nullptr, nullptr }
 		};
@@ -214,6 +224,8 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 
 		*/
 		luaL_register(L, nullptr, methods);
+
+		AddNonInt(L);
 
 		DerivedTV<T> derived{L};
 	}

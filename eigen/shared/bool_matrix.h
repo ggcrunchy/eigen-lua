@@ -28,21 +28,18 @@
 #include "types.h"
 #include "utils.h"
 #include "xprs.h"
+#include "stock_ops.h"
 #include "xpr_ops.h"
 #include "utils/LuaEx.h"
 #include <string>
+#include <type_traits>
 #include <Eigen/Eigen>
 
-/*********************
-* BoolMatrix methods *
-*********************/
-template<> struct AttachMethods<BoolMatrix> {
-	static BoolMatrix * GetT (lua_State * L, int arg = 1)
-	{
-		return LuaXS::CheckUD<BoolMatrix>(L, arg, "eigen.bool");
-	}
+//
+template<typename T, typename R = BoolMatrix> struct AttachBoolMatrixMethods {
+	ADD_INSTANCE_GETTERS()
 
-	AttachMethods (lua_State * L)
+	AttachBoolMatrixMethods (lua_State * L)
 	{
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 
@@ -84,26 +81,6 @@ template<> struct AttachMethods<BoolMatrix> {
 					return NewRet<BoolMatrix>(L, *GetT(L) || *GetT(L, 2));
 				}
 			}, {
-				"__call", [](lua_State * L)
-				{
-					BoolMatrix & m = *GetT(L);
-					int a = LuaXS::Int(L, 2) - 1;
-					bool result;
-
-					if (lua_gettop(L) == 2)
-					{
-						CheckVector(L, m, 1);
-
-						result = m.cols() == 1 ? m(a, 0) : m(0, a);
-					}
-
-					else result = m(a, LuaXS::Int(L, 3) - 1);
-
-					return LuaXS::PushArgAndReturn(L, result);
-				}
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
-			}, {
 				"count", [](lua_State * L)
 				{
 					auto how = GetVectorwiseOption(L, 2);
@@ -112,7 +89,7 @@ template<> struct AttachMethods<BoolMatrix> {
 
 					else
 					{
-						auto td = GetTypeData<Eigen::MatrixXi>(L, eFetchIfMissing);
+						auto td = GetTypeData<Eigen::MatrixXi>(L, TypeData::eFetchIfMissing);
 
 						luaL_argcheck(L, td, 2, "Column- or row-wise count() requires int matrices");
 
@@ -125,23 +102,14 @@ template<> struct AttachMethods<BoolMatrix> {
 					}
 				}
 			}, {
-				"__eq", [](lua_State * L)
-				{
-					return LuaXS::PushArgAndReturn(L, *GetT(L) == *GetT(L, 2));
-				}
-			}, {
-				"__gc", LuaXS::TypedGC<BoolMatrix>
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
-			}, {
 				"select", [](lua_State * L)
 				{
 					TypeData * types[] = {
-						GetTypeData<Eigen::MatrixXi>(L, eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXf>(L, eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXd>(L, eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXcf>(L, eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXcd>(L, eFetchIfMissing)
+						GetTypeData<Eigen::MatrixXi>(L, TypeData::eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXf>(L, TypeData::eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXd>(L, TypeData::eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXcf>(L, TypeData::eFetchIfMissing),
+						GetTypeData<Eigen::MatrixXcd>(L, TypeData::eFetchIfMissing)
 					};
 
 					for (auto cur : types)
@@ -150,6 +118,18 @@ template<> struct AttachMethods<BoolMatrix> {
 						{
 							lua_settop(L, 3);	// mat, then, else
 							lua_getref(L, cur->mSelectRef);	// mat, then, else, select
+
+							// For non-matrix objects such as maps, make a temporary and pass it along to the
+							// select function. (Resolving this in the select logic itself seems to cause major
+							// compilation slowdown.)
+							ArgObjectR<R> bm{L, 1};
+
+							if (!std::is_same<T, R>::value)
+							{
+								lua_pushlightuserdata(L, bm.mObject);	// mat, then, else, select, conv_mat
+								lua_replace(L, 1);	// conv_mat, then, else, select
+							}
+
 							lua_insert(L, 1);	// select, mat, then, else
 							lua_call(L, 3, 1);	// m
 
@@ -161,22 +141,34 @@ template<> struct AttachMethods<BoolMatrix> {
 
 					return 0;
 				}
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(size)
-			}, {
-				"__tostring", [](lua_State * L)
-				{
-					return Print(L, *GetT(L));
-				}
 			},
 			{ nullptr, nullptr }
 		};
 
 		luaL_register(L, nullptr, methods);
 
+		StockOps<BoolMatrix> so{L};
 		WriteOps<BoolMatrix> wo{L};
 		XprOps<BoolMatrix> xo{L};
 
 	#endif
+	}
+};
+
+/*********************
+* BoolMatrix methods *
+*********************/
+template<int Rows, int Cols, int Options, int MaxRows, int MaxCols> struct AttachMethods<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>> : AttachBoolMatrixMethods<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>> {
+	AttachMethods (lua_State * L) : AttachBoolMatrixMethods<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>>(L)
+	{
+	}
+};
+
+/********************************
+* Mapped boolean matrix methods *
+********************************/
+template<int Rows, int Cols, int Options, int MaxRows, int MaxCols, int MapOptions, typename S> struct AttachMethods<Eigen::Map<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>> : AttachBoolMatrixMethods<Eigen::Map<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>> {
+	AttachMethods (lua_State * L) : AttachBoolMatrixMethods<Eigen::Map<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>>(L)
+	{
 	}
 };

@@ -132,10 +132,23 @@
 										PUSH_TYPED_DATA(res)
 
 //
-// TODO: too fragile? autos like this lead to surprises :/
+// TODO: too fragile? autos like this lead to surprises :/ (thinking of going with proxies or tags)
 #define EIGEN_PUSH_AUTO_RESULT(METHOD)	auto res = GetT(L)->METHOD();			\
 																				\
 										return NewRet<decltype(res)>(L, res)
+
+// Common form of operations that transform the contents of a matrix.
+#define EIGEN_XFORM(METHOD)	auto how = GetVectorwiseOption(L, 2);										\
+																										\
+							if (how == eNotVectorwise) return NewRet<R>(L, GetT(L)->METHOD());			\
+																										\
+							else																		\
+							{																			\
+								if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
+								else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
+							}																			\
+																										\
+							return 1
 
 // Helper to package a name and method body as a luaL_Reg.
 #define EIGEN_REG(NAME, CALL)	#NAME, [](lua_State * L)	\
@@ -163,3 +176,4 @@
 #define EIGEN_REL_OP_METHOD(NAME, OP) EIGEN_REG(NAME, EIGEN_REL_OP(OP))
 #define EIGEN_REAL_GET_COMPLEX_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_REAL_GET_COMPLEX(NAME))
 #define EIGEN_PUSH_AUTO_RESULT_METHOD(NAME) EIGEN_REG(NAME, EIGEN_PUSH_AUTO_RESULT(NAME))
+#define EIGEN_XFORM_METHOD(NAME) EIGEN_REG(NAME, EIGEN_XFORM(NAME))

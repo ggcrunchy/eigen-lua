@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "xprs.h"
 #include "arith_ops.h"
+#include "stock_ops.h"
 #include "write_ops.h"
 #include "xpr_ops.h"
 #include "macros.h"
@@ -46,21 +47,6 @@
 																													\
 						return 1
 
-// Common form of operations that transform the contents of a matrix.
-#define XFORM(METHOD)	auto how = GetVectorwiseOption(L, 2);										\
-																									\
-						if (how == eNotVectorwise) return NewRet<R>(L, GetT(L)->METHOD());			\
-																									\
-						else																		\
-						{																			\
-							if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
-							else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
-						}																			\
-																									\
-						return 1
-
-#define XFORM_METHOD(NAME) EIGEN_REG(NAME, XFORM(NAME))
-
 // Methods assigned to matrices in general.
 // TODO: maybe a vector_dependent is in order?
 template<typename T, typename R> struct CommonMethods {
@@ -72,15 +58,15 @@ template<typename T, typename R> struct CommonMethods {
 
 		template<bool = !Eigen::NumTraits<T::Scalar>::IsComplex, bool = !Eigen::NumTraits<U>::IsComplex> MT CastTo (lua_State * L)
 		{
-			return GetT(L)->template cast<U>();
+			return GetR(L).template cast<U>();
 		}
 
 		template<> MT CastTo<false, true> (lua_State * L)
 		{
-			T & m = *GetT(L);
+			R mat = GetR(L);
 			MT out;
 
-			out.resizeLike(m);
+			out.resizeLike(mat);
 
 			struct VisitCoeffs {
 				MT & mOut;
@@ -100,14 +86,14 @@ template<typename T, typename R> struct CommonMethods {
 				}
 			} v{out};
 
-			m.visit(v);
+			mat.visit(v);
 
 			return out;
 		}
 
 		Cast (lua_State * L)
 		{
-			auto td = GetTypeData<MT>(L, eFetchIfMissing);
+			auto td = GetTypeData<MT>(L, TypeData::eFetchIfMissing);
 
 			luaL_argcheck(L, td, 2, "Matrix type unavailable for cast");
 
@@ -129,24 +115,6 @@ template<typename T, typename R> struct CommonMethods {
 	#define EIGEN_MATRIX_PREDICATE(METHOD) return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD(GetPrecision(L, 2)))	
 	#define EIGEN_MATRIX_PREDICATE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PREDICATE(NAME))
 
-	// Helper to transpose a matrix without needlessly creating types.
-	template<typename U> struct Transposer {
-		static int Do (lua_State * L)
-		{
-			New<Eigen::Transpose<U>>(L, GetT(L)->transpose());	// mat, transp
-			GetTypeData<Eigen::Transpose<U>>(L)->RefAt(L, "transposed_from", 1);
-
-			return 1;
-		}
-	};
-
-	template<typename U> struct Transposer<Eigen::Transpose<U>> {
-		static int Do (lua_State * L)
-		{
-			return GetTypeData<T>(L)->GetRef(L, "transposed_from", 1);
-		}
-	};
-
 	CommonMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -164,50 +132,11 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_ARRAY_METHOD(arg)
 			}, {
-				EIGEN_MATRIX_GET_MATRIX_METHOD(asDiagonal)
-			}, {
-				"asMatrix", AsMatrix<T, R>
-			}, {
 				EIGEN_ARRAY_METHOD(asin)
 			}, {
 				EIGEN_ARRAY_METHOD(atan)
 			}, {
-				"binaryExpr", [](lua_State * L)
-				{
-					return NewRet<R>(L, GetT(L)->binaryExpr(GetR(L, 2), [L](const T::Scalar & x, const T::Scalar & y) {
-						LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 3}, x, y);	// mat1, mat2, func, func, x, y
-
-						lua_call(L, 2, 1);	// mat1, mat2, func, result
-
-						T::Scalar result(0);
-
-						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
-
-						lua_pop(L, 1);	// mat1, mat2, func
-
-						return result;
-					}));
-				}
-			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(blueNorm)
-			}, {
-				"__call", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					int a = LuaXS::Int(L, 2) - 1;
-					T::Scalar result;
-
-					if (lua_gettop(L) == 2)
-					{
-						CheckVector(L, m, 1);
-
-						result = m.cols() == 1 ? m(a, 0) : m(0, a);
-					}
-
-					else result = m(a, LuaXS::Int(L, 3) - 1);
-
-					return LuaXS::PushArgAndReturn(L, result);
-				}
 			}, {
 				"cast", [](lua_State * L)
 				{
@@ -236,10 +165,6 @@ template<typename T, typename R> struct CommonMethods {
 					return 1;
 				}
 			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(colStride)
-			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(conjugate)
 			}, {
 				EIGEN_ARRAY_METHOD(cos)
@@ -252,11 +177,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(cwiseAbs2)
 			}, {
-				EIGEN_REL_OP_METHOD(cwiseEqual, ==)
-			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(cwiseInverse)
-			}, {
-				EIGEN_REL_OP_METHOD(cwiseNotEqual, !=)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_MATRIX_PAIR_METHOD(cwiseProduct)
 			}, {
@@ -266,10 +187,6 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(cwiseSqrt)
 			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(data)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(diagonalSize)
-			}, {
 				"dot", [](lua_State * L)
 				{
 					return LuaXS::PushArgAndReturn(L, AsVector<T>::To(L).dot(AsVector<R>::To(L, 2)));
@@ -277,15 +194,9 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_ARRAY_METHOD(exp)
 			}, {
-				"__gc", LuaXS::TypedGC<T>
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(hasNaN)
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(hypotNorm)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(innerSize)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
 			}, {
 				"isApprox", [](lua_State * L)
 				{
@@ -324,11 +235,6 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_PREDICATE_METHOD(isZero)
 			}, {
-				"__len", [](lua_State * L)
-				{
-					EIGEN_MATRIX_PUSH_VALUE(size);
-				}
-			}, {
 				EIGEN_ARRAY_METHOD(log)
 			}, {
 				EIGEN_ARRAY_METHOD(log10)
@@ -347,126 +253,13 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(norm)
 			}, {
-				XFORM_METHOD(normalized)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerSize)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
+				EIGEN_XFORM_METHOD(normalized)
 			}, {
 				EIGEN_MATRIX_REDUCE_METHOD(prod)
-			}, {
-				"redux", [](lua_State * L)
-				{
-					auto how = GetVectorwiseOption(L, 3);
-
-					auto func = [L](const T::Scalar & x, const T::Scalar & y)
-					{
-						LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 2}, x, y);	// mat, func[, how], func, x, y
-
-						lua_call(L, 2, 1);	// mat, func[, how], result
-
-						T::Scalar result(0);
-
-						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
-
-						lua_pop(L, 1);	// mat, func
-
-						return result;
-					};
-
-					if (how == eNotVectorwise)
-					{
-						T::Scalar result = GetT(L)->redux(func);
-
-						return LuaXS::PushArgAndReturn(L, result);
-					}
-
-					else
-					{
-						if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().redux(func));
-						else return NewRet<R>(L, GetT(L)->rowwise().redux(func));
-					}
-				}
-			}, {
-				"replicate", [](lua_State * L)
-				{
-					int a = LuaXS::Int(L, 2);
-
-					if (lua_isstring(L, 3))
-					{
-						switch (GetVectorwiseOption(L, 3))
-						{
-						case eColwise:
-							return NewRet<R>(L, GetT(L)->colwise().replicate(a));
-						case eRowwise:
-							return NewRet<R>(L, GetT(L)->rowwise().replicate(a));
-						default:
-							luaL_argcheck(L, false, 3, "Expected column rather than reduction choice");
-
-							return 0;
-						}
-					}
-
-					else return NewRet<R>(L, GetT(L)->replicate(a, LuaXS::Int(L, 3)));
-				}
-			},
-		#ifdef WANT_MAP
-			{
-				"reshape", [](lua_State * L)
-				{
-					using M = MatrixOf<T::Scalar>;
-
-					T & m = *GetT(L);
-					Eigen::Map<M> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
-
-					New<Eigen::Map<M>>(L, std::move(map));	// mat, m, n, map
-					GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "mapped_from", 1);
-
-					return 1;
-				}
-			}, 
-		#endif
-		#ifdef WANT_MAP_WITH_CUSTOM_STRIDE
-			{
-				using M = MatrixOf<T::Scalar>;
-
-				"reshapeWithInnerStride", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					Eigen::Map<M, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
-
-					New<decltype(map)>(L, std::move(map));
-					GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
-
-					return 1;
-				}
-			}, {
-				"reshapeWithOuterStride", [](lua_State * L)
-				{
-					using M = MatrixOf<T::Scalar>;
-
-					T & m = *GetT(L);
-					Eigen::Map<M, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
-
-					New<decltype(map)>(L, std::move(map));
-					GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
-
-					return 1;
-				}
-			},
-		#endif
-			{
-				XFORM_METHOD(reverse)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(rowStride)
 			}, {
 				EIGEN_ARRAY_METHOD(sin)
 			}, {
 				EIGEN_ARRAY_METHOD(sinh)
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(size)
 			}, {
 				EIGEN_ARRAY_METHOD(square)
 			}, {
@@ -493,69 +286,11 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_ARRAY_METHOD(tanh)
 			}, {
-				"__tostring", [](lua_State * L)
-				{
-					return Print(L, *GetT(L));
-				}
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(trace)
-			}, {
-				"tranpose", Transposer<T>::Do
-			}, {
-				"unaryExpr", [](lua_State * L)
-				{
-					return NewRet<R>(L, GetT(L)->unaryExpr([L](const T::Scalar & x) {
-						LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 2}, x);// mat, func, func, x
-
-						lua_call(L, 1, 1);	// mat, func, result
-
-						T::Scalar result(0);
-
-						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
-
-						lua_pop(L, 1);	// mat, func
-
-						return result;
-					}));
-				}
 			}, {
 				"unitOrthogonal", [](lua_State * L)
 				{
 					return NewRet<R>(L, AsVector<T>::To(L).unitOrthogonal());
-				}
-			}, {
-				EIGEN_MATRIX_PUSH_VALUE_METHOD(value)
-			}, {
-				"visit", [](lua_State * L)
-				{
-					struct Visitor {
-						lua_State * mL;
-
-						Visitor (lua_State * L) : mL{L}
-						{
-						}
-
-						inline void Do (int arg, const T::Scalar & x, Eigen::Index i, Eigen::Index j)
-						{
-							LuaXS::PushMultipleArgs(mL, LuaXS::StackIndex{mL, arg}, x, int(i + 1), int(j + 1));	// mat, init, rest, func, x, i, j
-
-							lua_call(mL, 3, 0);	// mat, init, rest
-						}
-
-						inline void init (const T::Scalar & x, Eigen::Index i, Eigen::Index j)
-						{
-							Do(2, x, i, j);
-						}
-
-						inline void operator ()(const T::Scalar & x, Eigen::Index i, Eigen::Index j)
-						{
-							Do(3, x, i, j);
-						}
-					} v{L};
-					
-					GetT(L)->visit(v);
-
-					return 0;
 				}
 			},
 			{ nullptr, nullptr }
@@ -564,6 +299,7 @@ template<typename T, typename R> struct CommonMethods {
 		luaL_register(L, nullptr, methods);
 
 		ArithOps<T, R> ao{L};
+		StockOps<T, R> so{L};
 		WriteOps<T, R> wo{L};
 		XprOps<T, R> xo{L};
 	}

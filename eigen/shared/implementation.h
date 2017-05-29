@@ -45,6 +45,29 @@ static ThreadXS::TLS<lua_State *> tls_LuaState;
 #include <algorithm>
 #include <type_traits>
 
+// Add LinSpaced*() for non-boolean matrices.
+template<typename M> static void AddLinSpaced (lua_State * L)
+{
+	luaL_Reg methods[] = {
+		{
+			"LinSpaced", [](lua_State * L)
+			{
+				return NewRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Make(L, LuaXS::Int(L, 1)));
+			}
+		}, {
+			"LinSpacedRow", [](lua_State * L)
+			{
+				return NewRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Make(L, LuaXS::Int(L, 1)));
+			}
+		},
+		{ nullptr, nullptr }
+	};
+
+	luaL_register(L, nullptr, methods);
+}
+
+template<> static void AddLinSpaced<BoolMatrix> (lua_State *) {}
+
 // Add Umeyama() for real floating point matrices.
 template<typename M, bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && !Eigen::NumTraits<typename M::Scalar>::IsComplex> struct AddUmeyama {
 	AddUmeyama (lua_State * L)
@@ -67,10 +90,35 @@ template<typename M> struct AddUmeyama<M, false> {
 	AddUmeyama (lua_State *) {}
 };
 
+// Enable some type-related code generation (in this module) for appropriate matrix families.
+#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
+	template<> struct IsMatrixFamilyImplemented<BoolMatrix> : std::true_type {};
+#endif
+
+#ifdef WANT_INT
+	template<> struct IsMatrixFamilyImplemented<Eigen::MatrixXi> : std::true_type {};
+#endif
+
+#ifdef WANT_FLOAT
+	template<> struct IsMatrixFamilyImplemented<Eigen::MatrixXf> : std::true_type {};
+#endif
+
+#ifdef WANT_DOUBLE
+	template<> struct IsMatrixFamilyImplemented<Eigen::MatrixXd> : std::true_type {};
+#endif
+
+#ifdef WANT_CFLOAT
+	template<> struct IsMatrixFamilyImplemented<Eigen::MatrixXcf> : std::true_type {};
+#endif
+
+#ifdef WANT_CDOUBLE
+	template<> struct IsMatrixFamilyImplemented<Eigen::MatrixXcd> : std::true_type {};
+#endif
+
 // Supplies some front end functions for the type, in particular various matrix factories.
 template<typename M> static void AddType (lua_State * L)
 {
-	#ifdef EIGEN_PLUGIN_BASIC
+	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_newtable(L);// eigen, module
 	#endif
 
@@ -89,17 +137,7 @@ template<typename M> static void AddType (lua_State * L)
 
 				return NewRet<M>(L, M::Identity(m, n));	// m[, n], id
 			}
-		}, {
-			"LinSpaced", [](lua_State * L)
-			{
-				return NewRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Make(L, LuaXS::Int(L, 1)));
-			}
-		}, {
-			"LinSpacedRow", [](lua_State * L)
-			{
-				return NewRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Make(L, LuaXS::Int(L, 1)));
-			}
-		}, 
+		},
 	#ifdef WANT_MAP
 		{
 			"MatrixFromMemory", [](lua_State * L)
@@ -266,8 +304,8 @@ template<typename M> static void AddType (lua_State * L)
 
 	AddUmeyama<M> au{L};
 
-	#ifdef EIGEN_PLUGIN_BASIC
-		lua_setfield(L, -2, GetTypeData<M>(L, eCreateIfMissing)->GetName());// eigen = { ..., name = funcs }
+	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
+		lua_setfield(L, -2, GetTypeData<M>(L, TypeData::eCreateIfMissing)->GetName());	// eigen = { ..., name = funcs }
 	#endif
 }
 
@@ -304,31 +342,33 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 		lua_setfield(L, -2, "WithCache");	// ..., cachestack, NewType, M = { WithCache = WithContext }
 		lua_insert(L, -3);	// ..., M, cachestack, NewType
 
-		auto td = GetTypeData<BoolMatrix>(L, eCreateIfMissing);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
+		auto td = GetTypeData<BoolMatrix>(L, TypeData::eCreateIfMissing);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
 
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }
+
+		AddType<BoolMatrix>(L);
+	#endif
+	
+	#ifdef WANT_INT
+		AddType<Eigen::MatrixXi>(L);
 	#endif
 
-#ifdef WANT_INT
-	AddType<Eigen::MatrixXi>(L);
-#endif
+	#ifdef WANT_FLOAT
+		AddType<Eigen::MatrixXf>(L);
+	#endif
 
-#ifdef WANT_FLOAT
-	AddType<Eigen::MatrixXf>(L);
-#endif
+	#ifdef WANT_DOUBLE
+		AddType<Eigen::MatrixXd>(L);
+	#endif
 
-#ifdef WANT_DOUBLE
-	AddType<Eigen::MatrixXd>(L);
-#endif
+	#ifdef WANT_CFLOAT
+		AddType<Eigen::MatrixXcf>(L);
+	#endif
 
-#ifdef WANT_CFLOAT
-	AddType<Eigen::MatrixXcf>(L);
-#endif
-
-#ifdef WANT_CDOUBLE
-	AddType<Eigen::MatrixXcd>(L);
-#endif
+	#ifdef WANT_CDOUBLE
+		AddType<Eigen::MatrixXcd>(L);
+	#endif
 
 	return 1;
 }

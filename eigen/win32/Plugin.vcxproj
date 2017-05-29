@@ -21,6 +21,7 @@
     <ClInclude Include="..\shared\misc.h" />
     <ClInclude Include="..\shared\qr.h" />
     <ClInclude Include="..\shared\solver_base.h" />
+    <ClInclude Include="..\shared\stock_ops.h" />
     <ClInclude Include="..\shared\svd.h" />
     <ClInclude Include="..\shared\xpr_ops.h" />
     <ClInclude Include="..\shared\bool_matrix.h" />

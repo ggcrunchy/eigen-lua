@@ -62,6 +62,25 @@ inline bool WantsBool (lua_State * L, const char * str, int arg = -1)
 	return bWants;
 }
 
+// Helper to fetch a coefficient from a matrix.
+template<typename T> int Call (lua_State * L)
+{
+	const T & m = *GetInstance<T>(L);
+	int a = LuaXS::Int(L, 2) - 1;
+	T::Scalar result;
+
+	if (lua_gettop(L) == 2)
+	{
+		CheckVector(L, m, 1);
+
+		result = m.cols() == 1 ? m(a, 0) : m(0, a);
+	}
+
+	else result = m(a, LuaXS::Int(L, 3) - 1);
+
+	return LuaXS::PushArgAndReturn(L, result);
+}
+
 // Helper to read complex numbers in various formats.
 template<typename T> static std::complex<T> Complex (lua_State * L, int arg)
 {
@@ -233,7 +252,7 @@ template<typename R, typename MM, typename MS, typename SM> R WithMatrixScalarCo
 
 // Veneer over the LinSpaced factory that also allows for complex types.
 template<typename T, int R, int C> struct LinSpacing {
-	using V = MatrixOf<typename T::Scalar, R, C>;
+	using V = Eigen::Matrix<typename T::Scalar, R, C>;
 
 	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> static V Make (lua_State * L, int n)
 	{

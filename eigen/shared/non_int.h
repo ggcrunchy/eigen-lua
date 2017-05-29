@@ -28,8 +28,6 @@
 #include "utils.h"
 #include "macros.h"
 #include "solvers.h"
-#include "self_adjoint_view.h"
-#include "triangular_view.h"
 #include <type_traits>
 
 // Methods assigned to matrices with non-integer types.
@@ -49,8 +47,8 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 		{
 		}
 
-		R & operator * (void) { return mMat; }
-		R * operator -> (void) { return &mMat; }
+		const R & operator * (void) { return mMat; }
+		const R * operator -> (void) { return &mMat; }
 	};
 
 	template<> struct MatrixRef<false> {
@@ -60,8 +58,8 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 		{
 		}
 
-		R & operator * (void) { return *mPtr; }
-		R * operator -> (void) { return mPtr; }
+		const R & operator * (void) { return *mPtr; }
+		const R * operator -> (void) { return mPtr; }
 	};
 
 	// Conditionally add certain solvers according to whether the matrix is complex.
@@ -177,7 +175,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 						lua_getfield(L, 3, "method");	// a, b, opts, no_eigenvectors?, method
 
 						const char * names[] = { "ABx_lx", "Ax_lBx", "BAx_lx", nullptr };
-						decltype(method) methods[] = {Eigen::Ax_lBx, Eigen::Ax_lBx, Eigen::BAx_lx };
+						decltype(method) methods[] = { Eigen::Ax_lBx, Eigen::Ax_lBx, Eigen::BAx_lx };
 
 						method = methods[luaL_checkoption(L, -1, "", names)];
 					}
@@ -266,68 +264,6 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 					auto opts = WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors;
 
 					return NewRet<Eigen::SelfAdjointEigenSolver<R>>(L, Eigen::SelfAdjointEigenSolver<R>{*MatrixRef<>{L}, opts});
-				}
-			}, {
-				"selfadjointView", [](lua_State * L)
-				{
-					const char * names[] = { "Lower", "Upper", nullptr };
-
-					switch (luaL_checkoption(L, 2, nullptr, names))
-					{
-					case 0:	// Lower-triangular
-						New<Eigen::SelfAdjointView<T, Eigen::Lower>>(L, GetT(L)->selfadjointView<Eigen::Lower>());	// mat[, opt], sav
-						GetTypeData<Eigen::SelfAdjointView<T, Eigen::Lower>>(L)->RefAt(L, "sav_viewed_from", 1);
-
-						break;
-					default:// Upper-triangular
-						New<Eigen::SelfAdjointView<T, Eigen::Upper>>(L, GetT(L)->selfadjointView<Eigen::Upper>());	// mat[, opt], sav
-						GetTypeData<Eigen::SelfAdjointView<T, Eigen::Upper>>(L)->RefAt(L, "sav_viewed_from", 1);
-
-						break;
-					}
-
-					return 1;
-				}
-			}, {
-				"triangularView", [](lua_State * L)
-				{
-					const char * names[] = { "Lower", "StrictlyLower", "StrictlyUpper", "UnitLower", "UnitUpper", "Upper", nullptr };
-
-					switch (luaL_checkoption(L, 2, nullptr, names))
-					{
-					case 0:	// Lower-triangular
-						New<Eigen::TriangularView<T, Eigen::Lower>>(L, GetT(L)->triangularView<Eigen::Lower>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::Lower>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
-					case 1:// Strictly lower-triangular
-						New<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L, GetT(L)->triangularView<Eigen::StrictlyLower>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
-					case 2:// Strictly upper-triangular
-						New<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L, GetT(L)->triangularView<Eigen::StrictlyUpper>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
-					case 3:// Upper-triangular
-						New<Eigen::TriangularView<T, Eigen::UnitLower>>(L, GetT(L)->triangularView<Eigen::UnitLower>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::UnitLower>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
-					case 4:// Unit lower-triangular
-						New<Eigen::TriangularView<T, Eigen::UnitUpper>>(L, GetT(L)->triangularView<Eigen::UnitUpper>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::UnitUpper>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
-					default:// Unit upper-triangular
-						New<Eigen::TriangularView<T, Eigen::Upper>>(L, GetT(L)->triangularView<Eigen::Upper>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::Upper>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
-					}
-
-					return 1;
 				}
 			}, {
 				"tridiagonalization", [](lua_State * L)
