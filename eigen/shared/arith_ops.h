@@ -30,9 +30,8 @@
 #include <type_traits>
 
 //
-template<typename T, typename R> struct ArithOps {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R> struct ArithOps : InstanceGetters<T, R> {
+	//
 	template<bool = IsXpr<T>::value> struct MatrixOps {
 		static int Add (lua_State * L)
 		{

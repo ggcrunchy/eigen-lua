@@ -29,17 +29,6 @@
 #include <Eigen/Eigen>
 #include <complex>
 
-// Vectorwise approach to use, and a helper to fetch it from the stack.
-enum VectorwiseOption { eNotVectorwise, eColwise, eRowwise };
-
-inline VectorwiseOption GetVectorwiseOption (lua_State * L, int arg)
-{
-	const char * types[] = { "", "colwise", "rowwise", nullptr };
-	VectorwiseOption opt[] = { eNotVectorwise, eColwise, eRowwise };
-
-	return opt[luaL_checkoption(L, arg, "", types)];
-}
-
 // Helper to return the instance again for method chaining.
 inline int SelfForChaining (lua_State * L)
 {
@@ -114,6 +103,27 @@ template<typename T> static std::complex<T> Complex (lua_State * L, int arg)
 	}
 }
 
+// Helper to reduce an object given some user-supplied function.
+template<typename T, typename R, typename RRT> RRT Redux (lua_State * L)
+{
+	auto func = [L](const T::Scalar & x, const T::Scalar & y)
+	{
+		LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 2}, x, y);	// mat, func[, how], func, x, y
+
+		lua_call(L, 2, 1);	// mat, func[, how], result
+
+		T::Scalar result(0);
+
+		if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
+
+		lua_pop(L, 1);	// mat, func
+
+		return result;
+	};
+
+	return GetInstance<T>(L)->redux(func);
+}
+
 // Specialize PushArg() for complex types to streamline code elsewhere, e.g. in macros.
 template<> inline void LuaXS::PushArg<std::complex<double>> (lua_State * L, std::complex<double> c)
 {
@@ -168,7 +178,7 @@ template<typename R> R * SetTemp (lua_State * L, R * temp, int arg)
 	lua_pushvalue(L, arg);	// ..., other
 	luaL_argcheck(L, luaL_getmetafield(L, -1, "asMatrix"), arg, "Type has no conversion method");	// ..., other, asMatrix
 
-	auto td = GetTypeData<R>(L);
+	auto td = TypeData<R>::Get(L);
 
 	td->mDatum = temp;
 
@@ -274,67 +284,3 @@ template<typename T, int R, int C> struct LinSpacing {
 		return V::LinSpaced(n, AsScalar<T>(L, 2), AsScalar<T>(L, 3));
 	}
 };
-
-// Hooks up method lookup properties in the metatable being populated. If a method with the
-// supplied name exists in another type's metatable, the object doing the lookup is copied
-// into a temporary of that other type. The temporary and method are packaged up into the
-// thunk returned by the property. We can call this like any method, but the thunk will
-// substitute the temporary for the method's self. This allows lightweight interface reuse,
-// albeit with the overhead of the temporaries. A small ring buffer is used to allow a small
-// number of methods at once, unfortunately with the expense of needless additional copies.
-// TODO: this will break down if multiple objects of the same type call methods
-template<typename T, typename R, int RingN = 4> void RingBufferOfMethodThunksProperty (lua_State * L)
-{
-	New<R>(L);	// ..., meta, temp
-
-	lua_createtable(L, RingN, 1);	// ..., meta, temp, wrappers
-
-	for (int i = 1; i <= RingN; ++i)
-	{
-		lua_pushvalue(L, -2);	// ..., meta, temp, wrappers, temp
-		lua_pushnil(L);	// ..., meta, temp, wrappers, temp, nil
-		lua_pushcclosure(L, [](lua_State * L) {
-			lua_pushvalue(L, lua_upvalueindex(2));	// obj, ... (args), method
-			lua_insert(L, 1);	// method, obj, ...
-			lua_pushvalue(L, lua_upvalueindex(1));	// method, obj, ..., temp
-			lua_replace(L, 2);	// method, temp, ...
-			lua_call(L, lua_gettop(L) - 1, LUA_MULTRET);// ... (results)
-			lua_pushnil(L);	// ..., nil
-			lua_rawset(L, lua_upvalueindex(2));	// ...; upvalue[2] = nil
-
-			return lua_gettop(L);
-		}, 2);	// ..., meta, temp, wrappers, wrapper
-		lua_rawseti(L, -2, i);	// ..., meta, temp, wrappers = { ..., wrapper }
-	}
-
-	lua_pushinteger(L, 1);	// ..., meta, temp, wrappers, 1
-	lua_setfield(L, -2, "pos");	// ..., meta, temp, wrappers = { ..., pos = 1 }
-
-	LuaXS::AttachPropertyParams app;
-
-	app.mUpvalueCount = 2;
-
-	LuaXS::AttachProperties(L, [](lua_State * L) {
-		*LuaXS::UD<R>(L, lua_upvalueindex(1)) = *GetInstance<T>(L);
-
-		luaL_getmetafield(L, lua_upvalueindex(1), "__index");	// obj, k, __index
-		lua_replace(L, 1);	// __index, k
-		lua_rawget(L, 1);	// __index, v?
-
-		if (lua_isfunction(L, 2))
-		{
-			lua_getfield(L, lua_upvalueindex(2), "pos");// __index, method, ring_pos
-
-			int pos = LuaXS::Int(L, -1);
-
-			lua_pop(L, 1);	// __index, method
-			lua_rawgeti(L, lua_upvalueindex(2), pos);	// __index, method, wrapper
-			lua_insert(L, 2);	// __index, wrapper, method
-			lua_setupvalue(L, 2, 2);// __index, wrapper; wrapper.upval[2] = method
-			lua_pushinteger(L, pos % RingN + 1);// __index, method, new_ring_pos
-			lua_setfield(L, lua_upvalueindex(2), "pos");// __index, method; wrapper = { ..., pos = new_ring_pos }
-		}
-
-		return 1;
-	}, app);// ..., meta
-}

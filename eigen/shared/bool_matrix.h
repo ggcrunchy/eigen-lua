@@ -36,40 +36,16 @@
 #include <Eigen/Eigen>
 
 //
-template<typename T, typename R = BoolMatrix> struct AttachBoolMatrixMethods {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R = BoolMatrix> struct AttachBoolMatrixMethods : InstanceGetters<T, R> {
 	AttachBoolMatrixMethods (lua_State * L)
 	{
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 
 		luaL_Reg methods[] = {
 			{
-				"all", [](lua_State * L)
-				{
-					switch (GetVectorwiseOption(L, 2))
-					{
-					case eColwise:
-						return NewRet<BoolMatrix>(L, GetT(L)->colwise().all());
-					case eRowwise:
-						return NewRet<BoolMatrix>(L, GetT(L)->rowwise().all());
-					default: // GetReductionChoice() will trap anything else
-						EIGEN_MATRIX_PUSH_VALUE(all);
-					}
-				}
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(all)
 			}, {
-				"any", [](lua_State * L)
-				{
-					switch (GetVectorwiseOption(L, 2))
-					{
-					case eColwise:
-						return NewRet<BoolMatrix>(L, GetT(L)->colwise().any());
-					case eRowwise:
-						return NewRet<BoolMatrix>(L, GetT(L)->rowwise().any());
-					default: // GetReductionChoice() will trap anything else
-						EIGEN_MATRIX_PUSH_VALUE(any);
-					}
-				}
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(any)
 			}, {
 				"band", [](lua_State * L)
 				{
@@ -81,65 +57,31 @@ template<typename T, typename R = BoolMatrix> struct AttachBoolMatrixMethods {
 					return NewRet<BoolMatrix>(L, *GetT(L) || *GetT(L, 2));
 				}
 			}, {
-				"count", [](lua_State * L)
-				{
-					auto how = GetVectorwiseOption(L, 2);
-
-					if (how == eNotVectorwise) EIGEN_MATRIX_PUSH_VALUE(count);
-
-					else
-					{
-						auto td = GetTypeData<Eigen::MatrixXi>(L, TypeData::eFetchIfMissing);
-
-						luaL_argcheck(L, td, 2, "Column- or row-wise count() requires int matrices");
-
-						Eigen::MatrixXi im;
-
-						if (how == eColwise) im = GetT(L)->colwise().count();
-						else im = GetT(L)->rowwise().count();
-
-						PUSH_TYPED_DATA(im);
-					}
-				}
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(count)
 			}, {
 				"select", [](lua_State * L)
 				{
-					TypeData * types[] = {
-						GetTypeData<Eigen::MatrixXi>(L, TypeData::eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXf>(L, TypeData::eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXd>(L, TypeData::eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXcf>(L, TypeData::eFetchIfMissing),
-						GetTypeData<Eigen::MatrixXcd>(L, TypeData::eFetchIfMissing)
-					};
+					// For non-matrix objects such as maps, make a temporary and pass it
+					// along to the select function. (Resolving this in the select logic
+					// itself seems to cause major compilation slowdown.)
+					ArgObjectR<R> bm{L, 1};
 
-					for (auto cur : types)
+					if (!std::is_same<T, R>::value)
 					{
-						if (cur && (LuaXS::IsType(L, cur->GetName(), 1) || LuaXS::IsType(L, cur->GetName(), 2)))
-						{
-							lua_settop(L, 3);	// mat, then, else
-							lua_getref(L, cur->mSelectRef);	// mat, then, else, select
-
-							// For non-matrix objects such as maps, make a temporary and pass it along to the
-							// select function. (Resolving this in the select logic itself seems to cause major
-							// compilation slowdown.)
-							ArgObjectR<R> bm{L, 1};
-
-							if (!std::is_same<T, R>::value)
-							{
-								lua_pushlightuserdata(L, bm.mObject);	// mat, then, else, select, conv_mat
-								lua_replace(L, 1);	// conv_mat, then, else, select
-							}
-
-							lua_insert(L, 1);	// select, mat, then, else
-							lua_call(L, 3, 1);	// m
-
-							return 1;
-						}
+						lua_pushlightuserdata(L, bm.mObject);	// mat, then, else, conv_mat
+						lua_replace(L, 1);	// conv_mat, then, else
 					}
 
-					luaL_error(L, "No typed matrix provided to select");
+					// Invoke the select logic appropriate to the supplied objects.
+					int scalars = 0;
 
-					return 0;
+					if (!GetTypeData::GetName(L, 2)) ++scalars;	// mat, then, else[, name1]
+					if (!GetTypeData::GetName(L, 3)) ++scalars;	// mat, then, else[, name1][, name2]
+
+					luaL_argcheck(L, scalars < 2, 2, "Two scalars supplied to select()");
+					luaL_argcheck(L, scalars > 0 || lua_equal(L, -2, -1), 2, "Mixed types supplied to select()");
+
+					return GetTypeData::Select(L);	// selection
 				}
 			},
 			{ nullptr, nullptr }

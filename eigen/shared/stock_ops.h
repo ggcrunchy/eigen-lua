@@ -29,27 +29,23 @@
 #include "macros.h"
 #include "self_adjoint_view.h"
 #include "triangular_view.h"
+#include "vectorwise.h"
 #include <utility>
 
 //
-template<typename T, typename R = T> struct StockOps {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R = T> struct StockOps : InstanceGetters<T, R> {
 	// Helper to transpose a matrix without needlessly creating types.
 	template<typename U> struct Transposer {
 		static int Do (lua_State * L)
 		{
-			New<Eigen::Transpose<U>>(L, GetT(L)->transpose());	// mat, transp
-			GetTypeData<Eigen::Transpose<U>>(L)->RefAt(L, "transposed_from", 1);
-
-			return 1;
+			NEW_REF1(Eigen::Transpose<U>, "transposed_from", GetT(L)->transpose());	// mat, transp
 		}
 	};
 
 	template<typename U> struct Transposer<Eigen::Transpose<U>> {
 		static int Do (lua_State * L)
 		{
-			return GetTypeData<T>(L)->GetRef(L, "transposed_from", 1);
+			return TypeData<T>::Get(L)->GetRef(L, "transposed_from", 1);
 		}
 	};
 
@@ -83,6 +79,11 @@ template<typename T, typename R = T> struct StockOps {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(colStride)
+			}, {
+				"colwise", [](lua_State * L)
+				{
+					NEW_REF1_DECLTYPE("vectorwise_from", GetT(L)->colwise());	// mat, vw
+				}
 			}, {
 				EIGEN_REL_OP_METHOD(cwiseEqual, ==)
 			}, {
@@ -120,58 +121,12 @@ template<typename T, typename R = T> struct StockOps {
 			}, {
 				"redux", [](lua_State * L)
 				{
-					auto how = GetVectorwiseOption(L, 3);
+					T::Scalar result = Redux<T, R, typename T::Scalar>(L);
 
-					auto func = [L](const T::Scalar & x, const T::Scalar & y)
-					{
-						LuaXS::PushMultipleArgs(L, LuaXS::StackIndex{L, 2}, x, y);	// mat, func[, how], func, x, y
-
-						lua_call(L, 2, 1);	// mat, func[, how], result
-
-						T::Scalar result(0);
-
-						if (!lua_isnil(L, -1)) result = AsScalar<R>(L, -1);
-
-						lua_pop(L, 1);	// mat, func
-
-						return result;
-					};
-
-					if (how == eNotVectorwise)
-					{
-						T::Scalar result = GetT(L)->redux(func);
-
-						return LuaXS::PushArgAndReturn(L, result);
-					}
-
-					else
-					{
-						if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().redux(func));
-						else return NewRet<R>(L, GetT(L)->rowwise().redux(func));
-					}
+					return LuaXS::PushArgAndReturn(L, result);
 				}
 			}, {
-				"replicate", [](lua_State * L)
-				{
-					int a = LuaXS::Int(L, 2);
-
-					if (lua_isstring(L, 3))
-					{
-						switch (GetVectorwiseOption(L, 3))
-						{
-						case eColwise:
-							return NewRet<R>(L, GetT(L)->colwise().replicate(a));
-						case eRowwise:
-							return NewRet<R>(L, GetT(L)->rowwise().replicate(a));
-						default:
-							luaL_argcheck(L, false, 3, "Expected column rather than reduction choice");
-
-							return 0;
-						}
-					}
-
-					else return NewRet<R>(L, GetT(L)->replicate(a, LuaXS::Int(L, 3)));
-				}
+				EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(replicate)
 			},
 		#ifdef WANT_MAP
 			{
@@ -182,10 +137,7 @@ template<typename T, typename R = T> struct StockOps {
 					T & m = *GetT(L);
 					Eigen::Map<M> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
 
-					New<Eigen::Map<M>>(L, std::move(map));	// mat, m, n, map
-					GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "mapped_from", 1);
-
-					return 1;
+					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);	// mat, m, n, map
 				}
 			}, 
 		#endif
@@ -198,10 +150,7 @@ template<typename T, typename R = T> struct StockOps {
 					T & m = *GetT(L);
 					Eigen::Map<M, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
 
-					New<decltype(map)>(L, std::move(map));
-					GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
-
-					return 1;
+					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);
 				}
 			}, {
 				"reshapeWithOuterStride", [](lua_State * L)
@@ -211,19 +160,21 @@ template<typename T, typename R = T> struct StockOps {
 					T & m = *GetT(L);
 					Eigen::Map<M, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
 
-					New<decltype(map)>(L, std::move(map));
-					GetTypeData<decltype(map)>(L)->RefAt(L, "mapped_from", 1);
-
-					return 1;
+					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);
 				}
 			},
 		#endif
 			{
-				EIGEN_XFORM_METHOD(reverse)
+				EIGEN_MATRIX_GET_MATRIX_METHOD(reverse)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rowStride)
+			}, {
+				"rowwise", [](lua_State * L)
+				{
+					NEW_REF1_DECLTYPE("vectorwise_from", GetT(L)->rowwise());	// mat, vw
+				}
 			}, {
 				"selfadjointView", [](lua_State * L)
 				{
@@ -232,18 +183,10 @@ template<typename T, typename R = T> struct StockOps {
 					switch (luaL_checkoption(L, 2, nullptr, names))
 					{
 					case 0:	// Lower-triangular
-						New<Eigen::SelfAdjointView<T, Eigen::Lower>>(L, GetT(L)->selfadjointView<Eigen::Lower>());	// mat[, opt], sav
-						GetTypeData<Eigen::SelfAdjointView<T, Eigen::Lower>>(L)->RefAt(L, "sav_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView<Eigen::Lower>());	// mat[, opt], sav
 					default:// Upper-triangular
-						New<Eigen::SelfAdjointView<T, Eigen::Upper>>(L, GetT(L)->selfadjointView<Eigen::Upper>());	// mat[, opt], sav
-						GetTypeData<Eigen::SelfAdjointView<T, Eigen::Upper>>(L)->RefAt(L, "sav_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView<Eigen::Upper>());	// mat[, opt], sav
 					}
-
-					return 1;
 				}
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(size)
@@ -262,38 +205,18 @@ template<typename T, typename R = T> struct StockOps {
 					switch (luaL_checkoption(L, 2, nullptr, names))
 					{
 					case 0:	// Lower-triangular
-						New<Eigen::TriangularView<T, Eigen::Lower>>(L, GetT(L)->triangularView<Eigen::Lower>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::Lower>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::Lower>());	// mat[, opt], tv
 					case 1:// Strictly lower-triangular
-						New<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L, GetT(L)->triangularView<Eigen::StrictlyLower>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::StrictlyLower>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::StrictlyLower>());	// mat[, opt], tv
 					case 2:// Strictly upper-triangular
-						New<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L, GetT(L)->triangularView<Eigen::StrictlyUpper>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::StrictlyUpper>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::StrictlyUpper>());	// mat[, opt], tv
 					case 3:// Upper-triangular
-						New<Eigen::TriangularView<T, Eigen::UnitLower>>(L, GetT(L)->triangularView<Eigen::UnitLower>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::UnitLower>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::UnitLower>());	// mat[, opt], tv
 					case 4:// Unit lower-triangular
-						New<Eigen::TriangularView<T, Eigen::UnitUpper>>(L, GetT(L)->triangularView<Eigen::UnitUpper>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::UnitUpper>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::UnitUpper>());	// mat[, opt], tv
 					default:// Unit upper-triangular
-						New<Eigen::TriangularView<T, Eigen::Upper>>(L, GetT(L)->triangularView<Eigen::Upper>());// mat[, opt], tv
-						GetTypeData<Eigen::TriangularView<T, Eigen::Upper>>(L)->RefAt(L, "tv_viewed_from", 1);
-
-						break;
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::Upper>());	// mat[, opt], tv
 					}
-
-					return 1;
 				}
 			}, {
 				"unaryExpr", [](lua_State * L)

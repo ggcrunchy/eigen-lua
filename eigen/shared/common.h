@@ -34,24 +34,9 @@
 #include "macros.h"
 #include <type_traits>
 
-// Common form of arithmetic operations that leave the matrix intact.
-#define NO_MUTATE(OP)	auto how = GetVectorwiseOption(L, 3);														\
-																													\
-						if (how == eNotVectorwise) return NewRet<R>(L, *GetT(L) OP GetR(L, 2));						\
-																													\
-						else																						\
-						{																							\
-							if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise() OP AsVector<R>::To(L, 2));	\
-							else return NewRet<R>(L, GetT(L)->rowwise() OP AsVector<R>::To(L, 2).transpose());		\
-						}																							\
-																													\
-						return 1
-
 // Methods assigned to matrices in general.
 // TODO: maybe a vector_dependent is in order?
-template<typename T, typename R> struct CommonMethods {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R> struct CommonMethods : InstanceGetters<T, R> {
 	// Helper to cast the matrix to another type, which may be in another shared library.
 	template<typename U> struct Cast {
 		using MT = MatrixOf<U>;
@@ -93,7 +78,7 @@ template<typename T, typename R> struct CommonMethods {
 
 		Cast (lua_State * L)
 		{
-			auto td = GetTypeData<MT>(L, TypeData::eFetchIfMissing);
+			auto td = TypeData<MT>::Get(L, GetTypeData::eFetchIfMissing);
 
 			luaL_argcheck(L, td, 2, "Matrix type unavailable for cast");
 
@@ -123,7 +108,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"add", [](lua_State * L)
 				{
-					NO_MUTATE(+);
+					return NewRet<R>(L, *GetT(L) + GetR(L, 2));
 				}
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(adjoint)
@@ -135,8 +120,6 @@ template<typename T, typename R> struct CommonMethods {
 				EIGEN_ARRAY_METHOD(asin)
 			}, {
 				EIGEN_ARRAY_METHOD(atan)
-			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(blueNorm)
 			}, {
 				"cast", [](lua_State * L)
 				{
@@ -189,14 +172,12 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"dot", [](lua_State * L)
 				{
-					return LuaXS::PushArgAndReturn(L, AsVector<T>::To(L).dot(AsVector<R>::To(L, 2)));
+					return LuaXS::PushArgAndReturn(L, ColumnVector<R>{L}->dot(*ColumnVector<R>{L, 2}));
 				}
 			}, {
 				EIGEN_ARRAY_METHOD(exp)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(hasNaN)
-			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(hypotNorm)
 			}, {
 				"isApprox", [](lua_State * L)
 				{
@@ -226,7 +207,7 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"isOrthogonal", [](lua_State * L)
 				{
-					return LuaXS::PushArgAndReturn(L, AsVector<T>::To(L).isOrthogonal(AsVector<R>::To(L, 2), GetPrecision(L, 3)));
+					return LuaXS::PushArgAndReturn(L, ColumnVector<R>{L}->isOrthogonal(*ColumnVector<R>{L, 2}, GetPrecision(L, 3)));
 				}
 			}, {
 				EIGEN_MATRIX_PREDICATE_METHOD(isUnitary)
@@ -241,21 +222,21 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"lp1Norm", [](lua_State * L)
 				{
-					EIGEN_MATRIX_REDUCE(lpNorm<1>);
+					EIGEN_MATRIX_PUSH_VALUE(lpNorm<1>);
 				}
 			}, {
 				"lpInfNorm", [](lua_State * L)
 				{
-					EIGEN_MATRIX_REDUCE(lpNorm<Eigen::Infinity>);
+					EIGEN_MATRIX_PUSH_VALUE(lpNorm<Eigen::Infinity>);
 				}
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(mean)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(mean)
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(norm)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(norm)
 			}, {
-				EIGEN_XFORM_METHOD(normalized)
+				EIGEN_MATRIX_GET_MATRIX_METHOD(normalized)
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(prod)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(prod)
 			}, {
 				EIGEN_ARRAY_METHOD(sin)
 			}, {
@@ -263,24 +244,30 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				EIGEN_ARRAY_METHOD(square)
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(squaredNorm)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(squaredNorm)
 			}, {
 				"stableNorm", [](lua_State * L)
 				{
-					return LuaXS::PushArgAndReturn(L, AsVector<R>::To(L).stableNorm());
+					return LuaXS::PushArgAndReturn(L, ColumnVector<R>{L}->stableNorm());
 				}
 			}, {
 				"stableNormalized", [](lua_State * L)
 				{
-					return NewRet<R>(L, AsVector<R>::To(L).stableNormalized());
+					ColumnVector<R> cv{L};
+
+					R nv = cv->stableNormalized();
+
+					cv.RestoreShape(&nv);
+
+					return NewRet<R>(L, nv);
 				}
 			}, {
 				"sub", [](lua_State * L)
 				{
-					NO_MUTATE(-);
+					return NewRet<R>(L, *GetT(L) - GetR(L, 2));
 				}
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(sum)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(sum)
 			}, {
 				EIGEN_ARRAY_METHOD(tan)
 			}, {
@@ -290,7 +277,13 @@ template<typename T, typename R> struct CommonMethods {
 			}, {
 				"unitOrthogonal", [](lua_State * L)
 				{
-					return NewRet<R>(L, AsVector<T>::To(L).unitOrthogonal());
+					ColumnVector<R> cv{L};
+
+					R nv = cv->stableNormalized();
+
+					cv.RestoreShape(&nv);
+
+					return NewRet<R>(L, nv);
 				}
 			},
 			{ nullptr, nullptr }

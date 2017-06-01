@@ -28,11 +28,7 @@
 /*************************
 * TriangularView methods *
 *************************/
-template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::TriangularView<MT, UpLo>, R> {
-	using T = Eigen::TriangularView<MT, UpLo>;
-
-	ADD_INSTANCE_GETTERS()
-
+template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::TriangularView<MT, UpLo>, R> : InstanceGetters<Eigen::TriangularView<MT, UpLo>, R> {
 	//
 	template<int ModeAnded> static int GetSelfAdjointView (lua_State * L)
 	{
@@ -56,7 +52,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 				}, {
 					"selfadjointView", [](lua_State * L)
 					{
-						return GetSelfAdjointView<T::Mode & (Eigen::Lower | Eigen::Upper)>(L);
+						return GetSelfAdjointView<Eigen::TriangularView<MT, UpLo>::Mode & (Eigen::Lower | Eigen::Upper)>(L);
 					}
 				}, {
 					EIGEN_PUSH_AUTO_RESULT_METHOD(transpose)
@@ -181,9 +177,9 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	{
 		luaL_Reg methods[] = {
 			{
-				"asMatrix", AsMatrix<T, R>
+				"asMatrix", AsMatrix<Eigen::TriangularView<MT, UpLo>, R>
 			}, {
-				"__call", Call<T>
+				"__call", Call<Eigen::TriangularView<MT, UpLo>>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
@@ -191,7 +187,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			}, /*{
 			   EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
 			}, */{
-				"__gc", LuaXS::TypedGC<T>
+				"__gc", LuaXS::TypedGC<Eigen::TriangularView<MT, UpLo>>
 			}, {
 				"__mul", [](lua_State * L)
 				{
@@ -227,7 +223,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 
 		AddNonInt(L);
 
-		DerivedTV<T> derived{L};
+		DerivedTV<Eigen::TriangularView<MT, UpLo>> derived{L};
 	}
 };
 

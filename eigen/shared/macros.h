@@ -73,20 +73,6 @@
 #define EIGEN_MATRIX_PAIR_VOID(METHOD)	GetT(L)->METHOD(GetR(L, 2));\
 																	\
 										return 0
-
-#define EIGEN_MATRIX_REDUCE(METHOD)	auto how = GetVectorwiseOption(L, 2);										\
-																												\
-									if (how == eNotVectorwise)													\
-									{																			\
-										EIGEN_MATRIX_PUSH_VALUE(METHOD);										\
-									}																			\
-																												\
-									else																		\
-									{																			\
-										if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
-										else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
-									}
-
 //
 #define EIGEN_MATRIX_SET_SCALAR(METHOD)	GetT(L)->METHOD(AsScalar<R>(L, 2));	\
 																			\
@@ -111,8 +97,8 @@
 										return SelfForChaining(L)
 
 //
-#define USING_COMPLEX_TYPE() using ComplexType = Eigen::Matrix<std::complex<R::Scalar>, Eigen::Dynamic, Eigen::Dynamic>
-#define GET_COMPLEX_TYPE_DATA()	auto td = GetTypeData<ComplexType>(L);								\
+#define USING_COMPLEX_TYPE() using ComplexType = MatrixOf<std::complex<R::Scalar>>
+#define GET_COMPLEX_TYPE_DATA()	auto td = TypeData<ComplexType>::Get(L);							\
 																									\
 								luaL_argcheck(L, td, 1, "Complex matrix type unavailable for cast")
 
@@ -169,7 +155,6 @@
 #define EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR(NAME))
 #define EIGEN_MATRIX_PAIR_VOID_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PAIR_VOID(NAME))
 #define EIGEN_MATRIX_PUSH_VALUE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_PUSH_VALUE(NAME))
-#define EIGEN_MATRIX_REDUCE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_REDUCE(NAME))
 #define EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_SET_SCALAR_CHAIN(NAME))
 #define EIGEN_MATRIX_SET_SCALAR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_SET_SCALAR(NAME))
 #define EIGEN_MATRIX_VOID_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_VOID(NAME))

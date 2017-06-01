@@ -31,9 +31,7 @@
 #include <type_traits>
 
 // Methods assigned to matrices with non-integer types.
-template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger> struct NonIntMethods {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger> struct NonIntMethods : InstanceGetters<T, R> {
 	template<typename T> struct UseTemporary : std::false_type {};
 	template<typename U> struct UseTemporary<Eigen::Transpose<U>> : std::true_type {};
 	template<typename U, int O, typename S> struct UseTemporary<Eigen::Map<U, O, S>> : std::true_type {};

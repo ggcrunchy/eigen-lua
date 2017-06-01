@@ -30,52 +30,39 @@
 #include <type_traits>
 
 //
-#define NEW_XPR(METHOD, ...)	XprSource<> xprs{L};										\
-								using XprType = decltype(xprs.mPtr->METHOD(__VA_ARGS__));	\
-																							\
-								New<XprType>(L, xprs.mPtr->METHOD(__VA_ARGS__))
-#define REF_XPR_SOURCE()	GetTypeData<XprType>(L)->RefAt(L, "xpr_from", 1);	\
-																				\
-							return 1
+#define NEW_XPR(METHOD, ...)	XprSource<> xprs{L};											\
+																								\
+								NEW_REF1_DECLTYPE("xpr_from", xprs.mPtr->METHOD(__VA_ARGS__))
 
-#define EIGEN_OBJECT_GET_XPR_COUNT(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2));	\
-											REF_XPR_SOURCE()
-#define EIGEN_OBJECT_GET_XPR_COUNT_PAIR(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2), LuaXS::Int(L, 3));\
-												REF_XPR_SOURCE()
-#define EIGEN_OBJECT_GET_XPR_INDEX(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2) - 1);	\
-											REF_XPR_SOURCE()
-#define EIGEN_OBJECT_GET_XPR_INDEX_PAIR(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1);\
-												REF_XPR_SOURCE()
+#define EIGEN_OBJECT_GET_XPR_COUNT(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2))
+#define EIGEN_OBJECT_GET_XPR_COUNT_PAIR(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2), LuaXS::Int(L, 3))
+#define EIGEN_OBJECT_GET_XPR_INDEX(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2) - 1)
+#define EIGEN_OBJECT_GET_XPR_INDEX_PAIR(METHOD)	NEW_XPR(METHOD, LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1)
 
 //
-template<typename T> struct VectorRing {
+template<typename R> struct VectorRing {
 	static const int N = 4;
- 
-	struct Box {
-		T mMap{nullptr, 0};
 
-		Box (void) = default;
-	};
-	
-	Box mEntries[N];//
+	ColumnVector<R> mEntries[N];//
 	int mIndex{0};	//
 
-	T * GetEntry (void)
+	ColumnVector<R> & GetEntry (void)
 	{
-		T * ptr = &mEntries[mIndex++].mMap;
+		auto & entry = mEntries[mIndex++];
 
 		mIndex %= N;
 
-		return ptr;
+		return entry;
 	}
+	// ^^^ TODO (and in what follows): these could very well be row vectors
 };
 
 //
-template<typename T> static typename AsVector<T>::Type * GetVectorFromRing (lua_State * L)
+template<typename T> static ColumnVector<T> & GetVectorFromRing (lua_State * L)
 {
-	using VRing = VectorRing<typename AsVector<T>::Type>;
+	using VRing = VectorRing<T>;
 
-	auto td = GetTypeData<T>(L);
+	auto td = TypeData<T>::Get(L);
 
 	//
 	if (td->mVectorRingRef == LUA_NOREF)
@@ -104,12 +91,11 @@ template<typename T> static typename AsVector<T>::Type * GetVectorFromRing (lua_
 	return pring->GetEntry();
 }
 
-#define EIGEN_NEW_VECTOR_BLOCK(METHOD, ...)	AsVector<T>::Type * ring_vec = GetVectorFromRing<T>(L);	\
-											AsVector<T>::New(ring_vec, GetT(L));					\
-																									\
-											using XprType = decltype(ring_vec->METHOD(__VA_ARGS__));\
-																									\
-											New<XprType>(L, ring_vec->METHOD(__VA_ARGS__))
+#define EIGEN_NEW_VECTOR_BLOCK(METHOD, ...)	ColumnVector<R> & ring_vec = GetVectorFromRing<R>(L);			\
+																											\
+											ring_vec.Init(L);												\
+																											\
+											NEW_REF1_DECLTYPE("xpr_from", ring_vec->METHOD(__VA_ARGS__))
 
 #define EIGEN_OBJECT_GET_XPR_COUNT_METHOD(NAME) EIGEN_REG(NAME, EIGEN_OBJECT_GET_XPR_COUNT(NAME))
 #define EIGEN_OBJECT_GET_XPR_COUNT_PAIR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_OBJECT_GET_XPR_COUNT_PAIR(NAME))
@@ -117,9 +103,7 @@ template<typename T> static typename AsVector<T>::Type * GetVectorFromRing (lua_
 #define EIGEN_OBJECT_GET_XPR_INDEX_PAIR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_OBJECT_GET_XPR_INDEX_PAIR(NAME))
 
 //
-template<typename T, typename R = T> struct XprOps {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R = T> struct XprOps : InstanceGetters<T, R> {
 	//
 	template<bool = IsXpr<T>::value> struct XprSource {
 		R * mPtr;
@@ -147,7 +131,6 @@ template<typename T, typename R = T> struct XprOps {
 				"block", [](lua_State * L)
 				{
 					NEW_XPR(block, LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1, LuaXS::Int(L, 4), LuaXS::Int(L, 5));	// mat, x, y, w, h, block
-					REF_XPR_SOURCE();
 				}
 			}, {
 				EIGEN_OBJECT_GET_XPR_COUNT_PAIR_METHOD(bottomLeftCorner)
@@ -161,13 +144,11 @@ template<typename T, typename R = T> struct XprOps {
 				"diagonal", [](lua_State * L)
 				{
 					NEW_XPR(diagonal, luaL_optint(L, 2, 0));// mat[, index], diagonal
-					REF_XPR_SOURCE();
 				}
 			}, {
 				"head", [](lua_State * L)
 				{
 					EIGEN_NEW_VECTOR_BLOCK(head, LuaXS::Int(L, 2));	// mat, n, hseg
-					REF_XPR_SOURCE();
 				}
 			}, {
 				EIGEN_OBJECT_GET_XPR_COUNT_METHOD(leftCols)
@@ -183,13 +164,11 @@ template<typename T, typename R = T> struct XprOps {
 				"segment", [](lua_State * L)
 				{
 					EIGEN_NEW_VECTOR_BLOCK(segment, LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3));// mat, pos, n, seg
-					REF_XPR_SOURCE();
 				}
 			}, {
 				"tail", [](lua_State * L)
 				{
 					EIGEN_NEW_VECTOR_BLOCK(tail, LuaXS::Int(L, 2));	// mat, n, tseg
-					REF_XPR_SOURCE();
 				}
 			}, {
 				EIGEN_OBJECT_GET_XPR_COUNT_PAIR_METHOD(topLeftCorner)

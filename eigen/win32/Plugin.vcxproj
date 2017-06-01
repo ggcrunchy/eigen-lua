@@ -23,6 +23,7 @@
     <ClInclude Include="..\shared\solver_base.h" />
     <ClInclude Include="..\shared\stock_ops.h" />
     <ClInclude Include="..\shared\svd.h" />
+    <ClInclude Include="..\shared\vectorwise.h" />
     <ClInclude Include="..\shared\xpr_ops.h" />
     <ClInclude Include="..\shared\bool_matrix.h" />
     <ClInclude Include="..\shared\common.h" />
@@ -45,6 +46,7 @@
     <ProjectGuid>{79F0CACC-457B-4A25-BC54-81277688C361}</ProjectGuid>
     <RootNamespace>Plugin</RootNamespace>
     <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">

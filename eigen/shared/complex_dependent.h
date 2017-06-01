@@ -33,7 +33,7 @@
 // TODO: these actually implement a UnaryView, I think...
 #define EIGEN_COMPONENT_GET(METHOD)	using RM = MatrixOf<T::Scalar::value_type>;				\
 																							\
-									auto td = GetTypeData<RM>(L);							\
+									auto td = TypeData<RM>::Get(L);							\
 																							\
 									luaL_argcheck(L, td, 1, "Real matrix type unavailable");\
 																							\
@@ -42,7 +42,7 @@
 									PUSH_TYPED_DATA(m)
 
 // Assign a component in a complex matrix.
-// TODO: see note for GET()... if that was implement, should instead be method of that
+// TODO: see note for GET()... if that was implemented, should instead be method of that
 #define EIGEN_COMPONENT_ASSIGN(METHOD, REAL_TYPE)	using Real = REAL_TYPE;																							\
 																																									\
 													T & m = *GetT(L);																								\
@@ -60,9 +60,7 @@
 #define EIGEN_COMPONENT_ASSIGN_METHOD(NAME, REAL_TYPE) EIGEN_REG(NAME "Assign", EIGEN_COMPONENT_ASSIGN(NAME, REAL_TYPE))
 
 // Methods assigned when the matrix is complex.
-template<typename T, typename R, bool = Eigen::NumTraits<T::Scalar>::IsComplex> struct ComplexDependentMethods {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R, bool = Eigen::NumTraits<T::Scalar>::IsComplex> struct ComplexDependentMethods : InstanceGetters<T, R> {
 	ComplexDependentMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -83,9 +81,7 @@ template<typename T, typename R, bool = Eigen::NumTraits<T::Scalar>::IsComplex> 
 };
 
 // Methods assigned when the matrix is real.
-template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R> struct ComplexDependentMethods<T, R, false> : InstanceGetters<T, R> {
 	// Version of methods when we have a matrix or basic map.
 	template<bool = HasNormalStride<T>::value> void AddIfNormalStride (lua_State * L)
 	{
@@ -142,9 +138,9 @@ template<typename T, typename R> struct ComplexDependentMethods<T, R, false> {
 					return NewRet<R>(L, R{});
 				}
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(maxCoeff)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(maxCoeff)
 			}, {
-				EIGEN_MATRIX_REDUCE_METHOD(minCoeff)
+				EIGEN_MATRIX_PUSH_VALUE_METHOD(minCoeff)
 			}, {
 				"real", [](lua_State * L)
 				{

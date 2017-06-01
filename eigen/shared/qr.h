@@ -143,7 +143,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivHouseholderQ
 			}, {
 				"rowsTranspositions", [](lua_State * L)
 				{
-					auto td = GetTypeData<Eigen::MatrixXi>(L);
+					auto td = TypeData<Eigen::MatrixXi>::Get(L);
 
 					luaL_argcheck(L, td, 2, "rowsTranspositions() requires int matrices");
 

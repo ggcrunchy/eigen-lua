@@ -152,8 +152,7 @@ template<typename M> static void AddType (lua_State * L)
 				{
 					Eigen::Map<M> map(reinterpret_cast<M::Scalar *>(memory), m, n);
 
-					New<Eigen::Map<M>>(L, std::move(map));	// memory, m[, n], map
-					GetTypeData<Eigen::Map<M>>(L)->RefAt(L, "map_bytes", 1);
+					NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], map
 				}
 
 				//
@@ -165,11 +164,8 @@ template<typename M> static void AddType (lua_State * L)
 
 					Eigen::Map<const M> map(reinterpret_cast<const M::Scalar *>(str), m, n);
 
-					New<Eigen::Map<const M>>(L, std::move(map));// memory, m[, n], map
-					GetTypeData<Eigen::Map<const M>>(L)->RefAt(L, "map_bytes", 1);
+					NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], map
 				}
-
-				return 1;
 			}
 		}, 
 	#endif
@@ -199,10 +195,7 @@ template<typename M> static void AddType (lua_State * L)
 
 				Eigen::Map<M, 0, Eigen::InnerStride<>> map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
 
-				New<decltype(map)>(L, std::move(map));	// memory, m[, n], stride, map
-				GetTypeData<decltype(map)>(L)->RefAt(L, "bytes", 1);
-
-				return 1;
+				NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], stride, map
 			}
 		}, {
 			"MatrixFromMemoryWithOuterStride", [](lua_State * L)
@@ -229,10 +222,7 @@ template<typename M> static void AddType (lua_State * L)
 
 				Eigen::Map<M, 0, Eigen::OuterStride<>> map(static_cast<const M::Scalar *>(memory.mBytes), m, n, stride);
 
-				New<decltype(map)>(L, std::move(map));	// memory, m[, n], stride, map					
-				GetTypeData<decltype(map)>(L)->RefAt(L, "bytes", 1);
-
-				return 1;
+				NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], stride, map
 			}
 		},*/
 	#endif
@@ -305,7 +295,7 @@ template<typename M> static void AddType (lua_State * L)
 	AddUmeyama<M> au{L};
 
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
-		lua_setfield(L, -2, GetTypeData<M>(L, TypeData::eCreateIfMissing)->GetName());	// eigen = { ..., name = funcs }
+		lua_setfield(L, -2, TypeData<M>::Get(L, GetTypeData::eCreateIfMissing)->GetName());	// eigen = { ..., name = funcs }
 	#endif
 }
 
@@ -342,7 +332,7 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 		lua_setfield(L, -2, "WithCache");	// ..., cachestack, NewType, M = { WithCache = WithContext }
 		lua_insert(L, -3);	// ..., M, cachestack, NewType
 
-		auto td = GetTypeData<BoolMatrix>(L, TypeData::eCreateIfMissing);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
+		auto td = TypeData<BoolMatrix>::Get(L, GetTypeData::eCreateIfMissing);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
 
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }

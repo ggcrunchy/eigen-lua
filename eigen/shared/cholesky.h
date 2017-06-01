@@ -44,7 +44,7 @@ template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<
 			}, {
 				"rankUpdate", [](lua_State * L)
 				{
-					GetT(L)->rankUpdate(AsVector<R>::To(L, 2), LuaXS::GetArg<Real>(L, 3));
+					GetT(L)->rankUpdate(*ColumnVector<R>{L, 2}, LuaXS::GetArg<Real>(L, 3));
 
 					return SelfForChaining(L);
 				}
@@ -80,7 +80,7 @@ template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LDLT<U, U
 			}, {
 				"transpositionsP", [](lua_State * L)
 				{
-					auto td = GetTypeData<Eigen::MatrixXi>(L);
+					auto td = TypeData<Eigen::MatrixXi>::Get(L);
 
 					luaL_argcheck(L, td, 2, "transpositionsP() requires int matrices");
 

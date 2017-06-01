@@ -56,14 +56,12 @@
 									}
 
 //
-template<typename T, typename R> struct SolverMethodsBase {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R> struct SolverMethodsBase : InstanceGetters<T, R> {
 	//
 	using Real = typename Eigen::NumTraits<typename R::Scalar>::Real;
 
 	//
-	template<bool = true> static int Info (lua_State * L) // dummy template parameter as lazy enable_if
+	template<bool = true> static int Info (lua_State * L) // dummy template parameter as poor man's enable_if
 	{
 		switch (GetT(L)->info())
 		{

@@ -24,6 +24,7 @@
 #pragma once
 
 #include "CoronaLua.h"
+#include "utils/LuaEx.h"
 #include "types.h"
 #include "utils.h"
 #include "arith_ops.h"
@@ -32,13 +33,15 @@
 #include <Eigen/Eigen>
 
 //
-template<typename T, typename R> struct AttachBlockMethods {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R> struct AttachBlockMethods : InstanceGetters<T, R> {
 	//
 	AttachBlockMethods (lua_State * L)
 	{
-		RingBufferOfMethodThunksProperty<T, R>(L);
+		LuaXS::MethodThunksProperty(L, [](lua_State * L) {
+			New<R>(L);	// ..., meta, temp
+		}, [](lua_State * L, const int ti) {
+			*LuaXS::UD<R>(L, ti) = *GetInstance<T>(L);
+		});
 
 		luaL_Reg methods[] = {
 			{

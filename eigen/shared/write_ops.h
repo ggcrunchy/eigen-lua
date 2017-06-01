@@ -76,7 +76,6 @@ template<typename R, typename T> struct MutateOp {
 
 template<typename R, typename U> struct MutateOp<R, Eigen::Diagonal<U, Eigen::DynamicIndex>> {
 	lua_State * mL;
-	R mTemp;
 
 	MutateOp (lua_State * L) : mL{L}
 	{
@@ -89,7 +88,7 @@ template<typename R, typename U> struct MutateOp<R, Eigen::Diagonal<U, Eigen::Dy
 							if (HasType<Eigen::Diagonal<U, Eigen::DynamicIndex>>(mL, 2)) object OP *GetInstance<Eigen::Diagonal<U, Eigen::DynamicIndex>>(mL, 2);										\
 							else if (HasType<Eigen::VectorBlock<U, Eigen::Dynamic>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<U, Eigen::Dynamic>>(mL, 2);										\
 							else if (HasType<Eigen::VectorBlock<Eigen::Transpose<U>, Eigen::Dynamic>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<Eigen::Transpose<U>, Eigen::Dynamic>>(mL, 2);	\
-							else object OP AsVector<R>::To(HasType<R>(mL, 2) ? LuaXS::UD<R>(mL, 2) : SetTemp(mL, &mTemp, 2));																			\
+							else object OP *ColumnVector<R>(mL, 2);																																		\
 						}
 
 	VB_OP(=)
@@ -103,7 +102,6 @@ template<typename R, typename U> struct MutateOp<R, Eigen::Diagonal<U, Eigen::Dy
 
 template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U, N>> {
 	lua_State * mL;
-	R mTemp;
 
 	MutateOp (lua_State * L) : mL{L}
 	{
@@ -114,8 +112,8 @@ template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U,
 							auto & object = *GetInstance<Eigen::VectorBlock<U, N>>(mL, 1);											\
 																																	\
 							if (HasType<Eigen::VectorBlock<U, N>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<U, N>>(mL, 2);	\
-							else object OP AsVector<R>::To(HasType<R>(mL, 2) ? LuaXS::UD<R>(mL, 2) : SetTemp(mL, &mTemp, 2));		\
-						}
+							else object OP *ColumnVector<R>(mL, 2);																	\
+						}	// TODO: ^^^^ or row vector...
 
 	VB_OP(=)
 	VB_OP(+=)
@@ -127,35 +125,11 @@ template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U,
 };
 
 //
-#define MUTATE(OP)	auto how = GetVectorwiseOption(L, 3);									\
-																							\
-					if (how == eNotVectorwise)												\
-					{																		\
-						MutateOp<R, T> mo{L};												\
-																							\
-						mo OP true;															\
-					}																		\
-																							\
-					else																	\
-					{																		\
-						if (how == eColwise) GetT(L)->colwise() OP AsVector<R>::To(L, 2);	\
-						else GetT(L)->rowwise() OP AsVector<R>::To(L, 2).transpose();		\
-					}																		\
-																							\
+#define MUTATE(OP)	MutateOp<R, T> mo{L};		\
+												\
+					mo OP true;					\
+												\
 					return SelfForChaining(L)
-
-//
-#define IN_PLACE_REDUCE(METHOD)	auto how = GetVectorwiseOption(L, 3);					\
-																						\
-								if (how == eNotVectorwise) GetT(L)->METHOD();			\
-																						\
-								else													\
-								{														\
-									if (how == eColwise) GetT(L)->colwise().METHOD();	\
-									else GetT(L)->rowwise().METHOD();					\
-								}														\
-																						\
-								return 0
 
 //
 #define PSEUDO_IN_PLACE(METHOD)	T & m = *GetT(L);		\
@@ -177,14 +151,11 @@ template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U,
 
 //
 #define COEFF_MUTATE_METHOD(NAME, OP) EIGEN_REG(NAME, COEFF_MUTATE(OP))
-#define IN_PLACE_REDUCE_METHOD(NAME) EIGEN_REG(NAME, IN_PLACE_REDUCE(NAME))
 #define PSEUDO_IN_PLACE_METHOD(NAME) EIGEN_REG(NAME, PSEUDO_IN_PLACE(NAME))
 #define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
 
 //
-template<typename T, typename R = T> struct WriteOps {
-	ADD_INSTANCE_GETTERS()
-
+template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 	// State usable by any of the resize methods' overloads.
 	struct ResizeState {
 		int mDim1{1}, mDim2{1};
@@ -245,7 +216,7 @@ template<typename T, typename R = T> struct WriteOps {
 	{
 		luaL_Reg methods[] = {
 			{
-				IN_PLACE_REDUCE_METHOD(reverseInPlace)
+				EIGEN_MATRIX_VOID_METHOD(reverseInPlace)
 			}, {
 				EIGEN_MATRIX_VOID_METHOD(transposeInPlace)
 			},
@@ -290,7 +261,7 @@ template<typename T, typename R = T> struct WriteOps {
 			}, {
 				COEFF_MUTATE_METHOD(coeffSubInPlace, -=)
 			}, {
-				IN_PLACE_REDUCE_METHOD(normalize)
+				EIGEN_MATRIX_VOID_METHOD(normalize)
 			}, {
 				"setFromBytes", [](lua_State * L)
 				{
@@ -330,7 +301,13 @@ template<typename T, typename R = T> struct WriteOps {
 			}, {
 				"stableNormalize", [](lua_State * L)
 				{
-					AsVector<R>::To(L).stableNormalize();
+					ColumnVector<R> cv{L, 1};
+
+					cv->stableNormalize();
+
+					cv.RestoreShape();
+
+					if (cv.Changed()) *GetT(L) = *cv;
 
 					return 0;
 				}

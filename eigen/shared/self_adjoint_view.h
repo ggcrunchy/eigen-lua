@@ -28,11 +28,7 @@
 /**************************
 * SelfAdjointView methods *
 **************************/
-template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::SelfAdjointView<MT, UpLo>, R> {
-	using T = Eigen::SelfAdjointView<MT, UpLo>;
-
-	ADD_INSTANCE_GETTERS()
-
+template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::SelfAdjointView<MT, UpLo>, R> : InstanceGetters<Eigen::SelfAdjointView<MT, UpLo>, R> {
 	//
 	template<bool = std::is_same<R::Scalar, bool>::value> static void AddNonBool (lua_State * L)
 	{
@@ -45,8 +41,8 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 					int spos = bHasV ? 4 : 3;
 					R::Scalar alpha = !lua_isnoneornil(L, spos) ? AsScalar<R>(L, spos) : R::Scalar(1);
 
-					if (bHasV) v.rankUpdate(AsVector<R>::To(L, 2), AsVector<R>::To(L, 3), alpha);
-					else v.rankUpdate(AsVector<R>::To(L, 2), alpha);
+					if (bHasV) v.rankUpdate(*ColumnVector<R>{L, 2}, *ColumnVector<R>{L, 3}, alpha);
+					else v.rankUpdate(GetR(L, 2), alpha);
 
 					return SelfForChaining(L);	// v, u[, v][, scalar], v
 				}
@@ -212,15 +208,15 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 	{
 		luaL_Reg methods[] = {
 			{
-				"asMatrix", AsMatrix<T, R>
+				"asMatrix", AsMatrix<Eigen::SelfAdjointView<MT, UpLo>, R>
 			}, {
-				"__call", Call<T>
+				"__call", Call<Eigen::SelfAdjointView<MT, UpLo>>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(diagonal)
 			}, {
-				"__gc", LuaXS::TypedGC<T>
+				"__gc", LuaXS::TypedGC<Eigen::SelfAdjointView<MT, UpLo>>
 			}, {
 				"__mul", [](lua_State * L)
 				{
@@ -258,7 +254,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 
 		luaL_register(L, nullptr, methods);
 
-		DerivedSAV<T> derived{L};
+		DerivedSAV<Eigen::SelfAdjointView<MT, UpLo>> derived{L};
 	}
 };
 
