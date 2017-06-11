@@ -23,31 +23,54 @@
 
 #pragma once
 
-#include "CoronaLua.h"
 #include "macros.h"
 #include "types.h"
 #include "utils.h"
 #include "views.h"
-#include <Eigen/Eigen>
-#include <type_traits>
-#include <utility>
 
 // TODO: might replace the functions that produce these by some more lightweight packets and collapse
 // to matrices otherwise, since they seem to complicate builds with maps and hunting down all the
 // scalar ops seems unpleasant
+template<typename ScalarOp> struct ScalarOpName;
+
+#define SCALAR_TYPE_NAME(OP)	template<typename S> struct ScalarOpName<Eigen::internal::scalar_##OP##_op<S>> {	\
+									ScalarOpName (luaL_Buffer * B, lua_State * L)									\
+									{																				\
+										luaL_addstring(L, "scalar_" #OP "_op<");									\
+																													\
+										AuxTypeName<S>(B, L);														\
+																													\
+										luaL_addstring(B, ">");														\
+									}																				\
+								}
+
+SCALAR_TYPE_NAME(conjugate);
+SCALAR_TYPE_NAME(imag);
+SCALAR_TYPE_NAME(imag_ref);
+SCALAR_TYPE_NAME(real);
+SCALAR_TYPE_NAME(real_ref);
+
 template<typename U, typename V> struct AuxTypeName<Eigen::CwiseUnaryOp<U, V>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
 		luaL_addstring(B, "CwiseUnaryOp<");
 
-		if (std::is_same<U, Eigen::internal::scalar_conjugate_op<V::Scalar>>::value)
-		{
-			luaL_addstring(B, "scalar_conjugate_op<");
+		ScalarOpName<U> son{B, L};
 
-			AuxTypeName<V::Scalar>(B, L);
+		luaL_addstring(B, ", ");
 
-			luaL_addstring(B, ">");
-		}
+		AuxTypeName<V>(B, L);
+
+		luaL_addstring(B, ">");
+	}
+};
+
+template<typename U, typename V> struct AuxTypeName<Eigen::CwiseUnaryView<U, V>> {
+	AuxTypeName (luaL_Buffer * B, lua_State * L)
+	{
+		luaL_addstring(B, "CwiseUnaryView<");
+
+		ScalarOpName<U> son{B, L};
 
 		luaL_addstring(B, ", ");
 

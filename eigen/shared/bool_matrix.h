@@ -23,17 +23,12 @@
 
 #pragma once
 
-#include "CoronaLua.h"
 #include "macros.h"
 #include "types.h"
 #include "utils.h"
 #include "xprs.h"
 #include "stock_ops.h"
 #include "xpr_ops.h"
-#include "utils/LuaEx.h"
-#include <string>
-#include <type_traits>
-#include <Eigen/Eigen>
 
 //
 template<typename T, typename R = BoolMatrix> struct AttachBoolMatrixMethods : InstanceGetters<T, R> {
@@ -96,6 +91,15 @@ template<typename T, typename R = BoolMatrix> struct AttachBoolMatrixMethods : I
 	#endif
 	}
 };
+#if 0
+/************************
+* Boolean block methods *
+************************/
+template<typename U, int Rows, int Cols, bool InnerPanel> struct AttachMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, BoolMatrix> : AttachBoolMatrixMethods<Eigen::Block<U, Rows, Cols, InnerPanel>> {
+	AttachMethods (lua_State * L) : AttachBoolMatrixMethods<Eigen::Block<U, Rows, Cols, InnerPanel>>(L)
+	{
+	}
+};
 
 /*********************
 * BoolMatrix methods *
@@ -109,8 +113,18 @@ template<int Rows, int Cols, int Options, int MaxRows, int MaxCols> struct Attac
 /********************************
 * Mapped boolean matrix methods *
 ********************************/
-template<int Rows, int Cols, int Options, int MaxRows, int MaxCols, int MapOptions, typename S> struct AttachMethods<Eigen::Map<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>> : AttachBoolMatrixMethods<Eigen::Map<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>> {
-	AttachMethods (lua_State * L) : AttachBoolMatrixMethods<Eigen::Map<Eigen::Matrix<bool, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>>(L)
+template<typename T, int Rows, int Cols, int Options, int MaxRows, int MaxCols, int MapOptions, typename S> struct AttachMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>> : AttachBoolMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>> {
+	AttachMethods (lua_State * L) : AttachBoolMatrixMethods<Eigen::Map<Eigen::Matrix<T, Rows, Cols, Options, MaxRows, MaxCols>, MapOptions, S>>(L)
 	{
 	}
 };
+
+/****************************
+* Boolean transpose methods *
+****************************/
+template<typename U> struct AttachMethods<Eigen::Transpose<U>, BoolMatrix> : AttachBoolMatrixMethods<Eigen::Transpose<U>> {
+	AttachMethods (lua_State * L) : AttachBoolMatrixMethods<Eigen::Transpose<U>>(L)
+	{
+	}
+};
+#endif

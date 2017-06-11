@@ -23,139 +23,96 @@
 
 #pragma once
 
-#include "CoronaLua.h"
-#include "ByteReader.h"
 #include "types.h"
 #include "utils.h"
 #include "macros.h"
-#include <algorithm>
-#include <type_traits>
-
-#define COEFF_MUTATE(OP)	T & m = *GetT(L);												\
-							int a = LuaXS::Int(L, 2) - 1;									\
-																							\
-							if (lua_gettop(L) == 3)											\
-							{																\
-								CheckVector(L, m, 1);										\
-																							\
-								(m.cols() == 1 ? m(a, 0) : m(0, a)) OP AsScalar<R>(L, 3);	\
-							}																\
-																							\
-							else m(a, LuaXS::Int(L, 3) - 1) OP AsScalar<R>(L, 4);			\
-																							\
-							return 0
-
-template<typename R, typename T> struct MutateOp {
-	lua_State * mL;
-	R mTemp;
-
-	MutateOp (lua_State * L) : mL{L}
-	{
-	}
-
-	#define VB_OP(OP)	void operator OP (bool)																											\
-						{																																\
-							T & object = *GetInstance<T>(mL);																							\
-																																						\
-							if (HasType<T>(mL, 2)) object OP *LuaXS::UD<T>(mL, 2);																		\
-							else if (HasType<R>(mL, 2)) object OP *LuaXS::UD<R>(mL, 2);																	\
-							else if (HasType<Eigen::Block<R>>(mL, 2)) object OP *LuaXS::UD<Eigen::Block<R>>(mL, 2);										\
-							else if (HasType<Eigen::Transpose<R>>(mL, 2)) object OP *LuaXS::UD<Eigen::Transpose<R>>(mL, 2);								\
-							else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(mL, 2)) object OP *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(mL, 2);	\
-							else object OP *SetTemp(mL, &mTemp, 2);																						\
-						}
-
-	VB_OP(=)
-	VB_OP(+=)
-	VB_OP(/=)
-	VB_OP(*=)
-	VB_OP(-=)
-
-	#undef VB_OP
-};
-
-template<typename R, typename U> struct MutateOp<R, Eigen::Diagonal<U, Eigen::DynamicIndex>> {
-	lua_State * mL;
-
-	MutateOp (lua_State * L) : mL{L}
-	{
-	}
-
-	#define VB_OP(OP)	void operator OP (bool)																																							\
-						{																																												\
-							auto & object = *GetInstance<Eigen::Diagonal<U, Eigen::DynamicIndex>>(mL, 1);																								\
-																																																		\
-							if (HasType<Eigen::Diagonal<U, Eigen::DynamicIndex>>(mL, 2)) object OP *GetInstance<Eigen::Diagonal<U, Eigen::DynamicIndex>>(mL, 2);										\
-							else if (HasType<Eigen::VectorBlock<U, Eigen::Dynamic>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<U, Eigen::Dynamic>>(mL, 2);										\
-							else if (HasType<Eigen::VectorBlock<Eigen::Transpose<U>, Eigen::Dynamic>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<Eigen::Transpose<U>, Eigen::Dynamic>>(mL, 2);	\
-							else object OP *ColumnVector<R>(mL, 2);																																		\
-						}
-
-	VB_OP(=)
-	VB_OP(+=)
-	VB_OP(/=)
-	VB_OP(*=)
-	VB_OP(-=)
-
-	#undef VB_OP
-};
-
-template<typename R, typename U, int N> struct MutateOp<R, Eigen::VectorBlock<U, N>> {
-	lua_State * mL;
-
-	MutateOp (lua_State * L) : mL{L}
-	{
-	}
-
-	#define VB_OP(OP)	void operator OP (bool)																						\
-						{																											\
-							auto & object = *GetInstance<Eigen::VectorBlock<U, N>>(mL, 1);											\
-																																	\
-							if (HasType<Eigen::VectorBlock<U, N>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<U, N>>(mL, 2);	\
-							else object OP *ColumnVector<R>(mL, 2);																	\
-						}	// TODO: ^^^^ or row vector...
-
-	VB_OP(=)
-	VB_OP(+=)
-	VB_OP(/=)
-	VB_OP(*=)
-	VB_OP(-=)
-
-	#undef VB_OP
-};
 
 //
-#define MUTATE(OP)	MutateOp<R, T> mo{L};		\
-												\
-					mo OP true;					\
-												\
-					return SelfForChaining(L)
+template<typename T, typename R, bool = IsBasic<T>::value> struct WriteOpsGetters : InstanceGetters<T, R> {};
+template<typename T, typename R> struct WriteOpsGetters<T, R, false> : TempInstanceGetters<T, R> {};
 
 //
-#define PSEUDO_IN_PLACE(METHOD)	T & m = *GetT(L);		\
-								R temp = m.reverse();	\
-														\
-								m = temp;				\
-														\
-								return 0
+template<typename T, typename R, bool = IsLvalue<T>::value> struct WriteOps : WriteOpsGetters<T, R> {
+	//
+	template<typename = T> struct MutateOp {
+		lua_State * mL;
+		R mTemp;
 
-// Common form of resize methods.
-#define EIGEN_MATRIX_RESIZE(METHOD)	T & m = *GetT(L);										\
-									ResizeState rs{L, m};									\
-																							\
-									if (!rs.mHas2) m.METHOD(rs.mDim1, Eigen::NoChange);		\
-									else if (!rs.mHas1) m.METHOD(Eigen::NoChange, rs.mDim2);\
-									else m.METHOD(rs.mDim1, rs.mDim2);						\
-																							\
-									return 0
+		MutateOp (lua_State * L) : mL{L}
+		{
+		}
 
-//
-#define COEFF_MUTATE_METHOD(NAME, OP) EIGEN_REG(NAME, COEFF_MUTATE(OP))
-#define PSEUDO_IN_PLACE_METHOD(NAME) EIGEN_REG(NAME, PSEUDO_IN_PLACE(NAME))
-#define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
+		#define VB_OP(OP)	void operator OP (bool)																				\
+							{																									\
+								auto t = GetT(mL);																				\
+								auto & object = *t;																				\
+																																\
+								if (HasType<T>(mL, 2)) object OP *LuaXS::UD<T>(mL, 2);											\
+								else if (HasType<Eigen::Block<R>>(mL, 2)) object OP *LuaXS::UD<Eigen::Block<R>>(mL, 2);			\
+								else if (HasType<Eigen::Transpose<R>>(mL, 2)) object OP *LuaXS::UD<Eigen::Transpose<R>>(mL, 2);	\
+								else object OP *SetTemp(mL, &mTemp, 2);															\
+							}
 
-//
-template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
+		VB_OP(=)
+		VB_OP(+=)
+		VB_OP(/=)
+		VB_OP(*=)
+		VB_OP(-=)
+
+		#undef VB_OP
+	};
+
+	template<typename U, int I> struct MutateOp<Eigen::Diagonal<U, I>> {
+		lua_State * mL;
+
+		MutateOp (lua_State * L) : mL{L}
+		{
+		}
+
+		#define VB_OP(OP)	void operator OP (bool)																														\
+							{																																			\
+								auto t = GetT(mL, 1);																													\
+								auto & object = *t;																														\
+																																										\
+								if (HasType<Eigen::Diagonal<U, I>>(mL, 2)) object OP *GetInstance<Eigen::Diagonal<U, I>>(mL, 2);										\
+								else if (HasType<Eigen::VectorBlock<U, Eigen::Dynamic>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<U, Eigen::Dynamic>>(mL, 2);	\
+								else object OP *ColumnVector<R>(mL, 2);																									\
+							}
+
+		VB_OP(=)
+		VB_OP(+=)
+		VB_OP(/=)
+		VB_OP(*=)
+		VB_OP(-=)
+
+		#undef VB_OP
+	};
+
+	template<typename U, int Size> struct MutateOp<Eigen::VectorBlock<U, Size>> {
+		lua_State * mL;
+
+		MutateOp (lua_State * L) : mL{L}
+		{
+		}
+
+		#define VB_OP(OP)	void operator OP (bool)																							\
+							{																												\
+								auto t = GetT(mL, 1);																						\
+								auto & object = *t;																							\
+																																			\
+								if (HasType<Eigen::VectorBlock<U, Size>>(mL, 2)) object OP *GetInstance<Eigen::VectorBlock<U, Size>>(mL, 2);\
+								else object OP *ColumnVector<R>(mL, 2);																		\
+							}	// TODO: ^^^^ or row vector...
+
+		VB_OP(=)
+		VB_OP(+=)
+		VB_OP(/=)
+		VB_OP(*=)
+		VB_OP(-=)
+
+		#undef VB_OP
+	};
+
 	// State usable by any of the resize methods' overloads.
 	struct ResizeState {
 		int mDim1{1}, mDim2{1};
@@ -189,8 +146,46 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 		}
 	};
 
+	//
+	#define COEFF_MUTATE(OP)	auto t = GetT(L);												\
+								auto & m = *t;													\
+								int a = LuaXS::Int(L, 2) - 1;									\
+																								\
+								if (lua_gettop(L) == 3)											\
+								{																\
+									CheckVector(L, m, 1);										\
+																								\
+									(m.cols() == 1 ? m(a, 0) : m(0, a)) OP AsScalar<R>(L, 3);	\
+								}																\
+																								\
+								else m(a, LuaXS::Int(L, 3) - 1) OP AsScalar<R>(L, 4);			\
+																								\
+								return 0
+
+	//
+	#define MUTATE(OP)	MutateOp<> mo{L};			\
+													\
+						mo OP true;					\
+													\
+						return SelfForChaining(L)
+
+	// Common form of resize methods.
+	#define EIGEN_MATRIX_RESIZE(METHOD)	auto t = GetT(L);										\
+										auto & m = *t;											\
+										ResizeState rs{L, m};									\
+																								\
+										if (!rs.mHas2) m.METHOD(rs.mDim1, Eigen::NoChange);		\
+										else if (!rs.mHas1) m.METHOD(Eigen::NoChange, rs.mDim2);\
+										else m.METHOD(rs.mDim1, rs.mDim2);						\
+																								\
+										return 0
+
+	//
+	#define COEFF_MUTATE_METHOD(NAME, OP) EIGEN_REG(NAME, COEFF_MUTATE(OP))
+	#define EIGEN_MATRIX_RESIZE_METHOD(NAME) EIGEN_REG(NAME, EIGEN_MATRIX_RESIZE(NAME))
+
 	// Operations added for matrices.
-	template<bool = std::is_same<T, R>::value> void AddMatrix (lua_State * L)
+	template<bool = IsMatrix<T>::value> void AddMatrix (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -201,22 +196,6 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 				EIGEN_MATRIX_RESIZE_METHOD(resize)
 			}, {
 				EIGEN_MATRIX_PAIR_VOID_METHOD(resizeLike)
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	};
-
-	// No-op when not a raw matrix.
-	template<> void AddMatrix<false> (lua_State *) {}
-
-	//
-	template<bool = IsXpr<T>::value> void AddNonXpr (lua_State * L) // todo: can probably be more precise, e.g. blocks of maps with inner or outer stride
-	{
-		luaL_Reg methods[] = {
-			{
-				EIGEN_MATRIX_VOID_METHOD(reverseInPlace)
 			}, {
 				EIGEN_MATRIX_VOID_METHOD(transposeInPlace)
 			},
@@ -224,16 +203,23 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 		};
 
 		luaL_register(L, nullptr, methods);
-	}
+	};
 
 	//
-	template<> void AddNonXpr<true> (lua_State * L)
+	template<bool> void AddTransposeInPlace (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
-				PSEUDO_IN_PLACE_METHOD(reverseInPlace)
-			}, {
-				PSEUDO_IN_PLACE_METHOD(transposeInPlace)
+				"transposeInPlace", [](lua_State * L)
+				{
+					TempRAII<T> object{L};
+
+					luaL_argcheck(L, object->cols() == object->rows(), 1, "Attempt to transpose non-square, non-matrix object in place");
+
+					object->transposeInPlace();
+
+					return 0;
+				}
 			},
 			{ nullptr, nullptr }
 		};
@@ -241,8 +227,18 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 		luaL_register(L, nullptr, methods);
 	}
 
+	template<> void AddTransposeInPlace<false> (lua_State *) {}
+
+	// No-op when not a raw matrix.
+	template<> void AddMatrix<false> (lua_State * L)
+	{
+		using N = TempRAII<T>::N;
+
+		AddTransposeInPlace<N::RowsAtCompileTime == N::ColsAtCompileTime>(L);
+	}
+
 	//
-	template<bool = !std::is_same<R, BoolMatrix>::value> void AddNonBool (lua_State * L)
+	template<typename = R> void AddNonBool (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -266,7 +262,8 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 				"setFromBytes", [](lua_State * L)
 				{
 					ByteReader bytes{L, 2};
-					T & m = *GetT(L);
+					auto t = GetT(L);
+					auto & m = *t;
 
 					if (!bytes.mBytes) lua_error(L);
 
@@ -289,7 +286,8 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 			}, {
 				"setLinSpaced", [](lua_State * L)
 				{
-					T & m = *GetT(L);
+					auto t = GetT(L);
+					auto & m = *t;
 
 					CheckVector(L, m, 1);
 
@@ -324,7 +322,7 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 	}
 
 	//
-	template<> void AddNonBool<false> (lua_State * L) {}
+	template<> void AddNonBool<BoolMatrix> (lua_State * L) {}
 
 	WriteOps (lua_State * L)
 	{
@@ -339,6 +337,8 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 			}, {
 				EIGEN_MATRIX_SET_SCALAR_METHOD(fill)
 			}, {
+				EIGEN_MATRIX_VOID_METHOD(reverseInPlace)
+			}, {
 				EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(setConstant)
 			}, {
 				EIGEN_MATRIX_CHAIN_METHOD(setIdentity)
@@ -351,27 +351,25 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 			}, {
 				"swap", [](lua_State * L)
 				{
-					T & object = *GetT(L);
+					auto t = GetT(L);
+					auto & m = *t;
 
-					if (HasType<T>(L, 2)) object.swap(*LuaXS::UD<T>(L, 2));
-					else if (HasType<R>(L, 2)) object.swap(*LuaXS::UD<R>(L, 2));
-					else if (HasType<Eigen::Block<R>>(L, 2)) object.swap(*LuaXS::UD<Eigen::Block<R>>(L, 2));
-					else if (HasType<Eigen::Transpose<R>>(L, 2)) object.swap(*LuaXS::UD<Eigen::Transpose<R>>(L, 2));
-					else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, 2)) object.swap(*LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, 2));
+					if (HasType<T>(L, 2)) m.swap(*LuaXS::UD<T>(L, 2));
+					else if (HasType<R>(L, 2)) m.swap(*LuaXS::UD<R>(L, 2)); // N.B. preempts same logic in SetTemp()
+					else if (HasType<Eigen::Block<R>>(L, 2)) m.swap(*LuaXS::UD<Eigen::Block<R>>(L, 2));
+					else if (HasType<Eigen::Transpose<R>>(L, 2)) m.swap(*LuaXS::UD<Eigen::Transpose<R>>(L, 2));
 					else
 					{
-						R t1 = object, t2;
-
-						SetTemp(L, &t2, 2);
+						R t1 = m, t2, * pt2 = SetTemp(L, &t2, 2);
 
 						luaL_argcheck(L, luaL_getmetafield(L, 2, "assign"), 2, "Type has no assign method");// object, other, assign
-						lua_insert(L, 2);	// object, assign, other
+						lua_insert(L, 2);	// m, assign, other
 
-						New<R>(L, t1);	// object, assign, other, object_mat
+						New<R>(L, t1);	// m, assign, other, m_mat
 
-						lua_call(L, 2, 0);	// object
+						lua_call(L, 2, 0);	// m
 
-						object = t2;
+						m = *pt2;
 					}
 
 					return 0;
@@ -384,11 +382,10 @@ template<typename T, typename R = T> struct WriteOps : InstanceGetters<T, R> {
 
 		AddMatrix(L);
 		AddNonBool(L);
-		AddNonXpr(L);
 	}
 };
 
-// When the underlying matrix is a constant, leave the write ops out.
-template<typename U, int O, typename S, typename R> struct WriteOps<Eigen::Map<const U, O, S>, R> {
+// Leave write ops out if the object is not an lvalue.
+template<typename T, typename R> struct WriteOps<T, R, false> {
 	WriteOps (lua_State *) {}
 };

@@ -23,12 +23,9 @@
 
 #pragma once
 
-#include "CoronaLua.h"
 #include "macros.h"
 #include "types.h"
 #include "utils.h"
-#include <Eigen/Eigen>
-#include <utility>
 
 //
 #define SOLVER_TYPE_NAME(TYPE)	template<typename T> struct AuxTypeName<Eigen::TYPE<T>> {	\
@@ -118,18 +115,6 @@ template<typename T, typename R> struct SolverMethodsBase : InstanceGetters<T, R
 				"setThreshold", SetThreshold<>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(threshold)
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
-
-	SolverMethodsBase (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"__gc", LuaXS::TypedGC<T>
 			},
 			{ nullptr, nullptr }
 		};

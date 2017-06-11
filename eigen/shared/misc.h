@@ -27,7 +27,7 @@
 
 //
 template<typename U, typename R> struct SchurMethodsBase : SolverMethodsBase<U, R> {
-	SchurMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
+	SchurMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -98,7 +98,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposi
 		return NewRet<Eigen::RealSchur<R>>(L, std::move(schur));
 	}
 
-	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::HessenbergDecomposition<U>, R>(L)
+	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -125,7 +125,7 @@ SOLVER_TYPE_NAME(HessenbergDecomposition);
 * RealQZ methods *
 *****************/
 template<typename U, typename R> struct AttachMethods<Eigen::RealQZ<U>, R> : SolverMethodsBase<Eigen::RealQZ<U>, R> {
-	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::RealQZ<U>, R>(L)
+	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -156,7 +156,7 @@ SOLVER_TYPE_NAME(RealQZ);
 * Tridiagonalization methods *
 *****************************/
 template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<U>, R> : SolverMethodsBase<Eigen::Tridiagonalization<U>, R> {
-	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::Tridiagonalization<U>, R>(L)
+	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

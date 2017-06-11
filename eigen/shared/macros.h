@@ -23,27 +23,28 @@
 
 #pragma once
 
-#include "CoronaLua.h"
-#include "types.h"
-#include "utils.h"
-#include "bool_matrix.h"
+//
+#define EIGEN_REL_OP(OP)	return WithArray(L, [L](const ArrayType & arr) {						\
+								if (!HasType<T>(L, 2))												\
+								{																	\
+									ArgObjectR<R> ao{L, 2};											\
+																									\
+									if (ao.mObject) New<BoolMatrix>(L, arr OP ao.mObject->array());	\
+									else New<BoolMatrix>(L, arr OP ao.mScalar);						\
+								}																	\
+																									\
+								else New<BoolMatrix>(L, arr OP GetR(L, 2).array());					\
+							})
+							
+//
+#define EIGEN_AS_ARRAY(METHOD)	return WithArray(L, [L](const ArrayType & arr) {	\
+									New<R>(L, arr.METHOD());						\
+								})
 
 //
-#define EIGEN_REL_OP(OP)	if (!HasType<T>(L, 2)) 																		\
-							{																							\
-								ArgObjectR<R> ao{L, 2};																	\
-																														\
-								if (ao.mObject) return NewRet<BoolMatrix>(L, GetT(L)->array() OP ao.mObject->array());	\
-								else return NewRet<BoolMatrix>(L, GetT(L)->array() OP ao.mScalar);						\
-							}																							\
-																														\
-							else return NewRet<BoolMatrix>(L, GetT(L)->array() OP GetT(L, 2)->array())
-
-//
-#define EIGEN_AS_ARRAY(METHOD)	return NewRet<R>(L, GetT(L)->array().METHOD())
-
-//
-#define EIGEN_AS_ARRAY_BOOL(METHOD)	return NewRet<BoolMatrix>(L, GetT(L)->array().METHOD())
+#define EIGEN_AS_ARRAY_BOOL(METHOD)	return WithArray(L, [L](const ArrayType & arr) {	\
+										New<BoolMatrix>(L, arr.METHOD());				\
+									})
 
 //
 #define EIGEN_MATRIX_GET_MATRIX(METHOD)	return NewRet<R>(L, GetT(L)->METHOD())
@@ -123,19 +124,6 @@
 																				\
 										return NewRet<decltype(res)>(L, res)
 
-// Common form of operations that transform the contents of a matrix.
-#define EIGEN_XFORM(METHOD)	auto how = GetVectorwiseOption(L, 2);										\
-																										\
-							if (how == eNotVectorwise) return NewRet<R>(L, GetT(L)->METHOD());			\
-																										\
-							else																		\
-							{																			\
-								if (how == eColwise) return NewRet<R>(L, GetT(L)->colwise().METHOD());	\
-								else return NewRet<R>(L, GetT(L)->rowwise().METHOD());					\
-							}																			\
-																										\
-							return 1
-
 // Helper to package a name and method body as a luaL_Reg.
 #define EIGEN_REG(NAME, CALL)	#NAME, [](lua_State * L)	\
 								{							\
@@ -161,4 +149,3 @@
 #define EIGEN_REL_OP_METHOD(NAME, OP) EIGEN_REG(NAME, EIGEN_REL_OP(OP))
 #define EIGEN_REAL_GET_COMPLEX_METHOD(NAME)	EIGEN_REG(NAME, EIGEN_REAL_GET_COMPLEX(NAME))
 #define EIGEN_PUSH_AUTO_RESULT_METHOD(NAME) EIGEN_REG(NAME, EIGEN_PUSH_AUTO_RESULT(NAME))
-#define EIGEN_XFORM_METHOD(NAME) EIGEN_REG(NAME, EIGEN_XFORM(NAME))

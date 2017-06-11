@@ -23,11 +23,22 @@
 
 #pragma once
 
-#include "CoronaLua.h"
+#include "stdafx.h"
 #include "macros.h"
 #include "types.h"
-#include <type_traits>
-#include <Eigen/Eigen>
+
+//
+template<typename U, int Dir> struct Nested<Eigen::VectorwiseOp<U, Dir>> {
+	using Type = U;
+};
+
+//
+template<typename T> struct IsBasicVectorwise : std::false_type {};
+template<typename U, int Dir> struct IsBasicVectorwise<Eigen::VectorwiseOp<U, Dir>> : IsBasic<U> {};
+
+//
+template<typename T, typename R, bool = IsBasicVectorwise<T>::value> struct VectorwiseWriteOpsGetters : InstanceGetters<T, R> {};
+template<typename T, typename R> struct VectorwiseWriteOpsGetters<T, R, false> : TempInstanceGetters<T, R> {};
 
 /***********************
 * VectorwiseOp methods *
@@ -52,21 +63,47 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 
 	template<> void NonComplex<false> (lua_State *) {}
 
+	//
+	template<bool = IsLvalue<U>::value> struct NumericalWriteOps : VectorwiseWriteOpsGetters<VR, R> {
+		NumericalWriteOps (lua_State * L)
+		{
+			luaL_Reg methods[] = {
+				{
+					"addInPlace", [](lua_State * L)
+					{
+						*GetT(L) += *VR{L, 2};
+
+						return SelfForChaining(L);
+					}
+				}, {
+					EIGEN_MATRIX_VOID_METHOD(normalize)
+				}, {
+					"subInPlace", [](lua_State * L)
+					{
+						*GetT(L) -= *VR(L, 2);
+
+						return SelfForChaining(L);
+					}
+				},
+				{ nullptr, nullptr }
+			};
+
+			luaL_register(L, nullptr, methods);
+		}
+	};
+
+	template<> struct NumericalWriteOps<false> {
+		NumericalWriteOps (lua_State *) {}
+	};
+
 	// Add methods that only makes sense for non-boolean matrices.
-	template<typename M = R> void AddBoolMatrixDependent (lua_State * L)
+	template<typename = R> void AddBoolMatrixDependent (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				"add", [](lua_State * L)
 				{
 					return NewRet<R>(L, *GetT(L) + *VR{L, 2});
-				}
-			}, {
-				"addInPlace", [](lua_State * L)
-				{
-					*GetT(L) += *VR{L, 2};
-
-					return SelfForChaining(L);
 				}
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(blueNorm)
@@ -87,8 +124,6 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(norm)
 			}, {
-				EIGEN_MATRIX_VOID_METHOD(normalize)
-			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(normalized)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(prod)
@@ -100,13 +135,6 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 					return NewRet<R>(L, *GetT(L) - *VR{L, 2});
 				}
 			}, {
-				"subInPlace", [](lua_State * L)
-				{
-					*GetT(L) -= *VR(L, 2);
-
-					return SelfForChaining(L);
-				}
-			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(sum)
 			},
 			{ nullptr, nullptr }
@@ -115,6 +143,8 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 		luaL_register(L, nullptr, methods);
 
 		NonComplex(L);
+
+		NumericalWriteOps<> nwo{L};
 	}
 
 	// Add methods for BoolMatrix-based types.
@@ -143,17 +173,36 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 		luaL_register(L, nullptr, methods);
 	}
 
+	//
+	template<bool = IsLvalue<U>::value> struct WriteOps : VectorwiseWriteOpsGetters<VR, R> {
+		WriteOps (lua_State * L)
+		{
+			luaL_Reg methods[] = {
+				{
+					"assign", [](lua_State * L)
+					{
+						*GetT(L) = *VR{L, 2};
+
+						return SelfForChaining(L);
+					}
+				}, {
+					EIGEN_MATRIX_VOID_METHOD(reverseInPlace)
+				},
+				{ nullptr, nullptr }
+			};
+
+			luaL_register(L, nullptr, methods);
+		}
+	};
+
+	template<> struct WriteOps<false> {
+		WriteOps (lua_State *) {}
+	};
+
 	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
-				"assign", [](lua_State * L)
-				{
-					*GetT(L) = *VR{L, 2};
-
-					return SelfForChaining(L);
-				}
-			}, {
 				"redux", [](lua_State * L)
 				{
 					return NewRet<R>(L, Redux<Eigen::VectorwiseOp<U, Dir>, R, R>(L));
@@ -162,8 +211,6 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 				EIGEN_MATRIX_GET_MATRIX_COUNT_METHOD(replicate)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(reverse)
-			}, {
-				EIGEN_MATRIX_VOID_METHOD(reverseInPlace)
 			},
 			{ nullptr, nullptr }
 		};
@@ -171,6 +218,8 @@ template<typename U, int Dir, typename R> struct AttachMethods<Eigen::Vectorwise
 		luaL_register(L, nullptr, methods);
 
 		AddBoolMatrixDependent(L);
+
+		WriteOps<> wo{L};
 	}
 };
 

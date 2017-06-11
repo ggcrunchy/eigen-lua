@@ -23,31 +23,120 @@
 
 #pragma once
 
-#include "CoronaLua.h"
 #include "types.h"
 #include "utils.h"
 #include "macros.h"
 #include "self_adjoint_view.h"
 #include "triangular_view.h"
 #include "vectorwise.h"
-#include <utility>
 
 //
-template<typename T, typename R = T> struct StockOps : InstanceGetters<T, R> {
-	// Helper to transpose a matrix without needlessly creating types.
-	template<typename U> struct Transposer {
-		static int Do (lua_State * L)
-		{
-			NEW_REF1(Eigen::Transpose<U>, "transposed_from", GetT(L)->transpose());	// mat, transp
-		}
-	};
+template<typename T, typename R> struct StockOps : InstanceGetters<T, R> {
+	//
+	template<bool = IsBasic<T>::value> static int Transpose (lua_State * L)
+	{
+		return Transposer<T>::Do(L);
+	}
 
-	template<typename U> struct Transposer<Eigen::Transpose<U>> {
-		static int Do (lua_State * L)
-		{
-			return TypeData<T>::Get(L)->GetRef(L, "transposed_from", 1);
-		}
-	};
+	template<> static int Transpose<false> (lua_State * L)
+	{
+		EIGEN_MATRIX_GET_MATRIX(transpose);
+	}
+
+	//
+	template<bool = IsBasic<T>::value> void AddBasicOps (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+		#ifdef WANT_MAP
+			{
+				"reshape", [](lua_State * L)
+				{
+					using M = MatrixOf<T::Scalar>;
+
+					T & m = *GetT(L);
+					Eigen::Map<M> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
+
+					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);	// mat, m, n, map
+				}
+			}, 
+		#endif
+		#ifdef WANT_MAP_WITH_CUSTOM_STRIDE
+			{
+				"reshapeWithInnerStride", [](lua_State * L)
+				{
+					using M = MatrixOf<T::Scalar>;
+
+					T & m = *GetT(L);
+					Eigen::Map<M, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
+
+					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);
+				}
+			}, {
+				"reshapeWithOuterStride", [](lua_State * L)
+				{
+					using M = MatrixOf<T::Scalar>;
+
+					T & m = *GetT(L);
+					Eigen::Map<M, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
+
+					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);
+				}
+			},
+		#endif
+			{
+				"selfadjointView", [](lua_State * L)
+				{
+					const char * names[] = { "Lower", "Upper", nullptr };
+
+					switch (luaL_checkoption(L, 2, nullptr, names))
+					{
+					case 0:	// Lower-triangular
+						NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView<Eigen::Lower>());	// mat[, opt], sav
+					default:// Upper-triangular
+						NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView<Eigen::Upper>());	// mat[, opt], sav
+					}
+				}
+			}, {
+				"transpose", Transposer<T>::Do
+			}, {
+				"triangularView", [](lua_State * L)
+				{
+					const char * names[] = { "Lower", "StrictlyLower", "StrictlyUpper", "UnitLower", "UnitUpper", "Upper", nullptr };
+
+					switch (luaL_checkoption(L, 2, nullptr, names))
+					{
+					case 0:	// Lower-triangular
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::Lower>());	// mat[, opt], tv
+					case 1: // Strictly lower-triangular
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::StrictlyLower>());	// mat[, opt], tv
+					case 2: // Strictly upper-triangular
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::StrictlyUpper>());	// mat[, opt], tv
+					case 3: // Upper-triangular
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::UnitLower>());	// mat[, opt], tv
+					case 4: // Unit lower-triangular
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::UnitUpper>());	// mat[, opt], tv
+					default: // Unit upper-triangular
+						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::Upper>());	// mat[, opt], tv
+					}
+				}
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	}
+
+	template<> void AddBasicOps<false> (lua_State * L)
+	{
+		luaL_Reg methods[] = {
+			{
+				"transpose", Transpose<>
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	}
 
 	StockOps (lua_State * L)
 	{
@@ -104,8 +193,6 @@ template<typename T, typename R = T> struct StockOps : InstanceGetters<T, R> {
 					return LuaXS::PushArgAndReturn(L, result);
 				}
 			}, {
-				"__gc", LuaXS::TypedGC<T>
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(innerSize)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
@@ -127,44 +214,7 @@ template<typename T, typename R = T> struct StockOps : InstanceGetters<T, R> {
 				}
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR_METHOD(replicate)
-			},
-		#ifdef WANT_MAP
-			{
-				"reshape", [](lua_State * L)
-				{
-					using M = MatrixOf<T::Scalar>;
-
-					T & m = *GetT(L);
-					Eigen::Map<M> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3)};
-
-					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);	// mat, m, n, map
-				}
-			}, 
-		#endif
-		#ifdef WANT_MAP_WITH_CUSTOM_STRIDE
-			{
-				using M = MatrixOf<T::Scalar>;
-
-				"reshapeWithInnerStride", [](lua_State * L)
-				{
-					T & m = *GetT(L);
-					Eigen::Map<M, 0, Eigen::InnerStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
-
-					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);
-				}
 			}, {
-				"reshapeWithOuterStride", [](lua_State * L)
-				{
-					using M = MatrixOf<T::Scalar>;
-
-					T & m = *GetT(L);
-					Eigen::Map<M, 0, Eigen::OuterStride<>> map{m.data(), LuaXS::Int(L, 2), LuaXS::Int(L, 3), LuaXS::Int(L, 4)};
-
-					NEW_REF1_DECLTYPE_MOVE("mapped_from", map);
-				}
-			},
-		#endif
-			{
 				EIGEN_MATRIX_GET_MATRIX_METHOD(reverse)
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
@@ -176,47 +226,11 @@ template<typename T, typename R = T> struct StockOps : InstanceGetters<T, R> {
 					NEW_REF1_DECLTYPE("vectorwise_from", GetT(L)->rowwise());	// mat, vw
 				}
 			}, {
-				"selfadjointView", [](lua_State * L)
-				{
-					const char * names[] = { "Lower", "Upper", nullptr };
-
-					switch (luaL_checkoption(L, 2, nullptr, names))
-					{
-					case 0:	// Lower-triangular
-						NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView<Eigen::Lower>());	// mat[, opt], sav
-					default:// Upper-triangular
-						NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView<Eigen::Upper>());	// mat[, opt], sav
-					}
-				}
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(size)
 			}, {
 				"__tostring", [](lua_State * L)
 				{
 					return Print(L, *GetT(L));
-				}
-			}, {
-				"tranpose", Transposer<T>::Do
-			}, {
-				"triangularView", [](lua_State * L)
-				{
-					const char * names[] = { "Lower", "StrictlyLower", "StrictlyUpper", "UnitLower", "UnitUpper", "Upper", nullptr };
-
-					switch (luaL_checkoption(L, 2, nullptr, names))
-					{
-					case 0:	// Lower-triangular
-						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::Lower>());	// mat[, opt], tv
-					case 1:// Strictly lower-triangular
-						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::StrictlyLower>());	// mat[, opt], tv
-					case 2:// Strictly upper-triangular
-						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::StrictlyUpper>());	// mat[, opt], tv
-					case 3:// Upper-triangular
-						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::UnitLower>());	// mat[, opt], tv
-					case 4:// Unit lower-triangular
-						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::UnitUpper>());	// mat[, opt], tv
-					default:// Unit upper-triangular
-						NEW_REF1_DECLTYPE("tv_viewed_from", GetT(L)->triangularView<Eigen::Upper>());	// mat[, opt], tv
-					}
 				}
 			}, {
 				"unaryExpr", [](lua_State * L)
@@ -274,5 +288,7 @@ template<typename T, typename R = T> struct StockOps : InstanceGetters<T, R> {
 		};
 
 		luaL_register(L, nullptr, methods);
+
+		AddBasicOps(L);
 	}
 };

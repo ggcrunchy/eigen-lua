@@ -21,5 +21,8 @@
 * [ MIT license: http://www.opensource.org/licenses/mit-license.php ]
 */
 
+#include "stdafx.h"
+
 #define EIGEN_DOUBLE_ONLY
+
 #include "implementation.h"

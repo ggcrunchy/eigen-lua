@@ -27,7 +27,7 @@
 
 //
 template<typename U, typename R> struct LUMethodsBase : SolverMethodsBase<U, R> {
-	LUMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
+	LUMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

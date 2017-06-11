@@ -9,15 +9,6 @@
     <ClInclude Include="..\shared\types.h" />
     <ClInclude Include="..\shared\bool_matrix.h" />
     <ClInclude Include="..\shared\macros.h" />
-    <ClInclude Include="..\shared\common.h">
-      <Filter>methods</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\non_int.h">
-      <Filter>methods</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\complex_dependent.h">
-      <Filter>methods</Filter>
-    </ClInclude>
     <ClInclude Include="..\shared\implementation.h" />
     <ClInclude Include="..\shared\matrix.h">
       <Filter>objects</Filter>
@@ -29,12 +20,6 @@
       <Filter>objects</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\xprs.h">
-      <Filter>objects</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\self_adjoint_view.h">
-      <Filter>objects</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\triangular_view.h">
       <Filter>objects</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\write_ops.h">
@@ -73,6 +58,22 @@
     <ClInclude Include="..\shared\vectorwise.h">
       <Filter>objects</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\solver_ops.h">
+      <Filter>methods</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\real_ops.h">
+      <Filter>methods</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\self_adjoint_view.h">
+      <Filter>objects\views</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\triangular_view.h">
+      <Filter>objects\views</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\unary_view.h">
+      <Filter>objects\views</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\stdafx.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="methods">
@@ -83,6 +84,9 @@
     </Filter>
     <Filter Include="objects\solvers">
       <UniqueIdentifier>{9532cc2c-8331-4500-8fa4-f58def24c46f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="objects\views">
+      <UniqueIdentifier>{8f457642-b5b3-41f7-afc6-0060e0a3f598}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

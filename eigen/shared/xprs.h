@@ -23,14 +23,11 @@
 
 #pragma once
 
-#include "CoronaLua.h"
-#include "utils/LuaEx.h"
 #include "types.h"
 #include "utils.h"
 #include "arith_ops.h"
 #include "write_ops.h"
 #include "xpr_ops.h"
-#include <Eigen/Eigen>
 
 //
 template<typename T, typename R> struct AttachBlockMethods : InstanceGetters<T, R> {
@@ -46,8 +43,6 @@ template<typename T, typename R> struct AttachBlockMethods : InstanceGetters<T, 
 		luaL_Reg methods[] = {
 			{
 				"asMatrix", AsMatrix<T, R>
-			}, {
-				"__gc", LuaXS::TypedGC<T>
 			}, {
 				"__tostring", [](lua_State * L)
 				{
@@ -67,36 +62,6 @@ template<typename T, typename R> struct AttachBlockMethods : InstanceGetters<T, 
 	}
 };
 
-/****************
-* Block methods *
-****************/
-template<typename U, int Rows, int Cols, bool InnerPanel, typename R> struct AttachMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, R> : AttachBlockMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, R> {
-	AttachMethods (lua_State * L) : AttachBlockMethods<Eigen::Block<U, Rows, Cols, InnerPanel>, R>(L)
-	{
-	}
-};
-
-template<typename U, int R, int C, bool InnerPanel> struct AuxTypeName<Eigen::Block<U, R, C, InnerPanel>> {
-	AuxTypeName (luaL_Buffer * B, lua_State * L)
-	{
-		luaL_addstring(B, "Block<");
-
-		AuxTypeName<U>(B, L);
-
-		luaL_addstring(B, ", ");
-
-		AddDynamicOrN(B, L, R);
-
-		luaL_addstring(B, ", ");
-
-		AddDynamicOrN(B, L, C);
-
-		if (InnerPanel) luaL_addstring(B, ", true");
-
-		luaL_addstring(B, ">");
-	}
-};
-
 /*******************
 * Diagonal methods *
 *******************/
@@ -109,13 +74,32 @@ template<typename U, int I, typename R> struct AttachMethods<Eigen::Diagonal<U, 
 template<typename U, int I> struct AuxTypeName<Eigen::Diagonal<U, I>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_addstring(B, "Diagonal<");
+		OpenType(B, "Diagonal");
 
 		AuxTypeName<U>(B, L);
 
-		luaL_addstring(B, ">");
+		CloseType(B);
 	}
 };
+
+/********************
+* Transpose methods *
+********************/
+template<typename U, typename R> struct AttachMethods<Eigen::Transpose<U>, R> : AttachBlockMethods<Eigen::Transpose<U>, R> {
+	AttachMethods (lua_State * L) : AttachBlockMethods<Eigen::Transpose<U>, R>(L)
+	{
+		luaL_Reg methods[] = {
+			{
+				"transpose", Transposer<Eigen::Transpose<U>>::Do
+			},
+			{ nullptr, nullptr }
+		};
+
+		luaL_register(L, nullptr, methods);
+	}
+};
+
+// Name handled by general case, q.v. types.h
 
 /**********************
 * VectorBlock methods *
@@ -126,13 +110,15 @@ template<typename U, typename R> struct AttachMethods<Eigen::VectorBlock<U>, R> 
 	}
 };
 
-template<typename U> struct AuxTypeName<Eigen::VectorBlock<U>> {
+template<typename U, int Size> struct AuxTypeName<Eigen::VectorBlock<U, Size>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_addstring(B, "VectorBlock<");
+		OpenType(B, "VectorBlock");
 
 		AuxTypeName<U>(B, L);
 
-		luaL_addstring(B, ">");
+		AddComma(B);
+		AddDynamicOrN(B, L, Size);
+		CloseType(B);
 	}
 };

@@ -27,7 +27,7 @@
 
 //
 template<typename U, typename R> struct SVDMethodsBase : SolverMethodsBase<U, R> {
-	SVDMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
+	SVDMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

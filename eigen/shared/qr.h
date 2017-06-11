@@ -27,7 +27,7 @@
 
 //
 template<typename U, typename R> struct QRMethodsBase : SolverMethodsBase<U, R> {
-	QRMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
+	QRMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

@@ -23,11 +23,8 @@
 
 #pragma once
 
-#include "CoronaLua.h"
 #include "types.h"
 #include "utils.h"
-#include <Eigen/Eigen>
-#include <type_traits>
 
 //
 template<typename T, typename R> struct ArithOps : InstanceGetters<T, R> {
@@ -51,7 +48,6 @@ template<typename T, typename R> struct ArithOps : InstanceGetters<T, R> {
 
 				if (HasType<Eigen::Block<R>>(L, 2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Block<R>>(L, 2));
 				else if (HasType<Eigen::Transpose<R>>(L, 2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Transpose<R>>(L, 2));
-				else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, 2)) return NewRet<R>(L, m * *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, 2));
 			}
 
 			else
@@ -60,7 +56,6 @@ template<typename T, typename R> struct ArithOps : InstanceGetters<T, R> {
 
 				if (HasType<Eigen::Block<R>>(L, 1)) return NewRet<R>(L, *LuaXS::UD<Eigen::Block<R>>(L, 1) * m);
 				else if (HasType<Eigen::Transpose<R>>(L, 1)) return NewRet<R>(L, *LuaXS::UD<Eigen::Transpose<R>>(L, 1) * m);
-				else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, 1)) return NewRet<R>(L, *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, 1) * m);
 			}
 
 			return MatrixOps<true>::Mul(L);
@@ -95,7 +90,7 @@ template<typename T, typename R> struct ArithOps : InstanceGetters<T, R> {
 				return m * s;
 			}, [](const T::Scalar & s, const R & m) {
 				return s * m;
-			}, 1, 2));
+			}));
 		}
 
 		static int Pow (lua_State * L)
@@ -106,7 +101,7 @@ template<typename T, typename R> struct ArithOps : InstanceGetters<T, R> {
 				return m.array().pow(s);
 			}, [](const T::Scalar & s, const R & m) {
 				return Eigen::pow(s, m.array());
-			}, 1, 2));
+			}));
 		}
 
 		static int Sub (lua_State * L)

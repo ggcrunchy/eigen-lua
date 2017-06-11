@@ -29,7 +29,7 @@
 * ComplexEigenSolver methods *
 *****************************/
 template<typename T, typename R> struct AttachMethods<Eigen::ComplexEigenSolver<T>, R> : SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R> {
-	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R>(L)
+	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -56,7 +56,7 @@ SOLVER_TYPE_NAME(ComplexEigenSolver);
 * EigenSolver methods *
 **********************/
 template<typename T, typename R> struct AttachMethods<Eigen::EigenSolver<T>, R> : SolverMethodsBase<Eigen::EigenSolver<T>, R> {
-	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::EigenSolver<T>, R>(L)
+	AttachMethods (lua_State * L)
 	{
 		USING_COMPLEX_TYPE();
 
@@ -89,7 +89,7 @@ SOLVER_TYPE_NAME(EigenSolver);
 * GeneralizedEigenSolver methods *
 *********************************/
 template<typename T, typename R> struct AttachMethods<Eigen::GeneralizedEigenSolver<T>, R> : SolverMethodsBase<Eigen::GeneralizedEigenSolver<T>, R> {
-	AttachMethods (lua_State * L) : SolverMethodsBase<Eigen::GeneralizedEigenSolver<T>, R>(L)
+	AttachMethods (lua_State * L)
 	{
 		USING_COMPLEX_TYPE();
 
@@ -116,7 +116,7 @@ SOLVER_TYPE_NAME(GeneralizedEigenSolver);
 
 //
 template<typename T, typename R> struct SelfAdjointEigensolverMethodsBase : SolverMethodsBase<T, R> {
-	SelfAdjointEigensolverMethodsBase (lua_State * L) : SolverMethodsBase<T, R>(L)
+	SelfAdjointEigensolverMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

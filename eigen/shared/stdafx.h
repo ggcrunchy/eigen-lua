@@ -23,48 +23,29 @@
 
 #pragma once
 
-#if defined(EIGEN_CORE)
-	#define PLUGIN_SUFFIX eigencore
-	#define PLUGIN_NAME luaopen_plugin_eigencore
-//	#define WANT_MAP
-#elif defined(EIGEN_INT_ONLY)
-	#define PLUGIN_SUFFIX eigenint
-	#define PLUGIN_NAME luaopen_plugin_eigenint
+// Corona bits...
+#include "CoronaLua.h"
+#include "CoronaLibrary.h"
 
-	#define WANT_INT
-//	#define WANT_MAP
-#elif defined(EIGEN_FLOAT_ONLY)
-	#define PLUGIN_SUFFIX eigenfloat
-	#define PLUGIN_NAME luaopen_plugin_eigenfloat
+// ...and Enterprise utilities + ByteReader.
+#include "utils/LuaEx.h"
+#include "utils/Blob.h"
+#include "utils/Thread.h"
+#include "ByteReader.h"
 
-	#define WANT_FLOAT
-	#define WANT_MAP
-#elif defined(EIGEN_DOUBLE_ONLY)
-	#define PLUGIN_SUFFIX eigendouble
-	#define PLUGIN_NAME luaopen_plugin_eigendouble
+// Propagate asserts to Lua. This is bound in implementation.h.
+static ThreadXS::TLS<lua_State *> tls_LuaState;
 
-	#define WANT_DOUBLE
-//	#define WANT_MAP
-#elif defined(EIGEN_CFLOAT_ONLY)
-	#define PLUGIN_SUFFIX eigencfloat
-	#define PLUGIN_NAME luaopen_plugin_eigencfloat
-
-	#define WANT_CFLOAT
-	#define WANT_MAP
-#elif defined(EIGEN_CDOUBLE_ONLY)
-	#define PLUGIN_SUFFIX eigencdouble
-	#define PLUGIN_NAME luaopen_plugin_eigencdouble
-
-	#define WANT_CDOUBLE
-	#define WANT_MAP
-#else
-	#define PLUGIN_SUFFIX eigen
-	#define PLUGIN_NAME luaopen_plugin_eigen
-
-	#define EIGEN_PLUGIN_BASIC
-	#define WANT_INT
-	#define WANT_FLOAT
-	#define WANT_DOUBLE
-	#define WANT_CFLOAT
-	#define WANT_CDOUBLE
+#ifndef eigen_assert
+	#define eigen_assert(x) if (!(x)) luaL_error(tls_LuaState, "Eigen error: " #x);
 #endif
+
+// STL...
+#include <algorithm>
+#include <complex>
+#include <sstream>
+#include <type_traits>
+#include <utility>
+
+// ...and Eigen itself.
+#include <Eigen/Eigen>

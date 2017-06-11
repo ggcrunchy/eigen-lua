@@ -36,15 +36,14 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			{
 				"rankUpdate", [](lua_State * L)
 				{
-					auto & v = *GetT(L);
 					bool bHasV = HasType<R>(L, 3);
 					int spos = bHasV ? 4 : 3;
 					R::Scalar alpha = !lua_isnoneornil(L, spos) ? AsScalar<R>(L, spos) : R::Scalar(1);
 
-					if (bHasV) v.rankUpdate(*ColumnVector<R>{L, 2}, *ColumnVector<R>{L, 3}, alpha);
-					else v.rankUpdate(GetR(L, 2), alpha);
+					if (bHasV) GetT(L)->rankUpdate(*ColumnVector<R>{L, 2}, *ColumnVector<R>{L, 3}, alpha);
+					else GetT(L)->rankUpdate(GetR(L, 2), alpha);
 
-					return SelfForChaining(L);	// v, u[, v][, scalar], v
+					return SelfForChaining(L);	// sav, u[, v][, scalar], v
 				}
 			},
 			{ nullptr, nullptr }
@@ -118,7 +117,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 		template<> void AddNonInt<true> (lua_State *) {}
 
 		//
-		template<typename V> struct NotMap {
+		template<bool = IsMatrix<MT>::value> struct NotMap {
 			NotMap (lua_State * L)
 			{
 				luaL_Reg methods[] = {
@@ -156,7 +155,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			};
 		};
 
-		template<typename V, int O, typename S, unsigned int UL> struct NotMap<Eigen::SelfAdjointView<Eigen::Map<V, O, S>, UL>> {
+		template<> struct NotMap<false> {
 			NotMap (lua_State *) {}
 		};
 
@@ -178,7 +177,7 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			BaseDerivedSAV(L);
 			AddNonInt(L);
 
-			NotMap<U> nm{L};
+			NotMap<> nm{L};
 		}
 	};
 
@@ -215,8 +214,6 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(cols)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(diagonal)
-			}, {
-				"__gc", LuaXS::TypedGC<Eigen::SelfAdjointView<MT, UpLo>>
 			}, {
 				"__mul", [](lua_State * L)
 				{

@@ -23,11 +23,8 @@
 
 #pragma once
 
-#include "CoronaLua.h"
-#include "utils/Thread.h"
 #include "types.h"
 #include "macros.h"
-#include <type_traits>
 
 //
 #define NEW_XPR(METHOD, ...)	XprSource<> xprs{L};											\
@@ -103,9 +100,17 @@ template<typename T> static ColumnVector<T> & GetVectorFromRing (lua_State * L)
 #define EIGEN_OBJECT_GET_XPR_INDEX_PAIR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_OBJECT_GET_XPR_INDEX_PAIR(NAME))
 
 //
-template<typename T, typename R = T> struct XprOps : InstanceGetters<T, R> {
+template<typename T, typename R> struct XprOps : InstanceGetters<T, R> {
 	//
-	template<bool = IsXpr<T>::value> struct XprSource {
+	template<bool = IsBasic<T>::value> struct XprSource {
+		T * mPtr;
+
+		XprSource (lua_State * L) : mPtr{GetT(L)}
+		{
+		}
+	};
+
+	template<> struct XprSource<false> {
 		R * mPtr;
 
 		XprSource (lua_State * L)
@@ -113,14 +118,6 @@ template<typename T, typename R = T> struct XprOps : InstanceGetters<T, R> {
 			mPtr = New<R>(L, *GetT(L));	// xpr, ..., new_mat
 
 			lua_replace(L, 1);	// new_mat, ...
-		}
-	};
-
-	template<> struct XprSource<false> {
-		T * mPtr;
-
-		XprSource (lua_State * L) : mPtr{GetT(L)}
-		{
 		}
 	};
 

@@ -23,18 +23,7 @@
 
 #pragma once
 
-#include "CoronaLua.h"
-#include "utils/LuaEx.h"
-#include "utils/Thread.h"
-#include "utils.h"
-#include <Eigen/Eigen>
-#include <bitset>
-#include <complex>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <type_traits>
-#include <utility>
+#include "stdafx.h"
 
 // Alias a few recurring cases.
 template<typename T> using ColVector = Eigen::Matrix<T, Eigen::Dynamic, 1>;
@@ -50,11 +39,23 @@ typedef MatrixOf<bool> BoolMatrix;
 template<typename T> struct IsXpr : std::false_type {};
 template<typename U, int R, int C, bool B> struct IsXpr<Eigen::Block<U, R, C, B>> : std::true_type {};
 template<typename U, int I> struct IsXpr<Eigen::Diagonal<U, I>> : std::true_type {};
-template<typename U> struct IsXpr<Eigen::VectorBlock<U>> : std::true_type {};
+template<typename U, int Size> struct IsXpr<Eigen::VectorBlock<U, Size>> : std::true_type {};
 
 // Trait to detect maps.
 template<typename T> struct IsMap : std::false_type {};
 template<typename U, int O, typename S> struct IsMap<Eigen::Map<U, O, S>> : std::true_type {};
+
+// Trait to detect matrices.
+template<typename T> struct IsMatrix : std::false_type {};
+template<typename U, int Rows, int Cols, int Options, int MaxRows, int MaxCols> struct IsMatrix<Eigen::Matrix<U, Rows, Cols, Options, MaxRows, MaxCols>> : std::true_type {};
+
+// Trait to detect "basic" configuations and prevent runaway compilation from certain methods.
+template<typename T> struct IsBasic : IsMatrix<T> {};
+template<typename U, int O, typename S> struct IsBasic<Eigen::Map<U, O, S>> : IsMatrix<U> {};
+
+// Extension of the last trait to add simple blocks.
+template<typename T> struct IsBasicMaybeBlock : IsBasic<T> {};
+template<typename U, int R, int C, bool B> struct IsBasicMaybeBlock<Eigen::Block<U, R, C, B>> : IsMatrix<U> {};
 
 // Trait to detect maps with non-trivial strides.
 template<typename T> struct HasNormalStride : std::false_type {};
@@ -65,67 +66,84 @@ template<typename U> struct HasNormalStride<Eigen::Map<U>> : std::true_type {};
 // for the matrix family in question.
 template<typename R> struct IsMatrixFamilyImplemented : std::false_type {};
 
-// Prefixed to type data registry keys, allowing them to largely reuse the type's own name
-// while still playing nicely with luaL_newmetatable(), whose current implementation also
-// uses the registry.
-#define TYPE_DATA_KEY_SIGNATURE "TD:"
+// Associate some numeric constants with each scalar type. Also, count the number
+// of bits needed to pack them into a bitfield in the type data.
+// See e.g. https://hbfs.wordpress.com/2016/03/22/log2-with-c-metaprogramming/
+template<int N> struct CompileTimeBits : std::integral_constant<int, CompileTimeBits<N / 2>::value + 1> {};
+template<> struct CompileTimeBits<1> : std::integral_constant<int, 1> {};
+
+enum ScalarType {
+	eInt, eFloat, eDouble, eCfloat, eCdouble, eBool,
+	kNumTypes,
+	kBits = CompileTimeBits<kNumTypes>::value
+};
+
+template<typename S> struct GetScalarType {};
+template<> struct GetScalarType<int> : std::integral_constant<ScalarType, eInt> {};
+template<> struct GetScalarType<float> : std::integral_constant<ScalarType, eFloat> {};
+template<> struct GetScalarType<double> : std::integral_constant<ScalarType, eDouble> {};
+template<> struct GetScalarType<std::complex<float>> : std::integral_constant<ScalarType, eCfloat> {};
+template<> struct GetScalarType<std::complex<double>> : std::integral_constant<ScalarType, eCdouble> {};
+template<> struct GetScalarType<bool> : std::integral_constant<ScalarType, eBool> {};
+
+// Keys to some global state for the type system.
+#define EIGEN_META_TO_TYPE_DATA_KEY "EIGEN::META_TO_TYPE_DATA"
+#define EIGEN_NEW_TYPE_KEY "EIGEN::NEW_TYPE"
 
 // Various ways to acquire type data that might not yet be present. This is a base type in
 // order to avoid dealing with templates for simple lookups, as well as to service any
 // logic that must be called in the absence of a known type.
 struct GetTypeData {
-	enum Info { eIsConvertible, eIsPrimitive, kInfoN };
 	enum Options { eDoNothing, eCreateIfMissing, eFetchIfMissing };
 
+	struct Info {
+		bool mIsConvertible : 1;// Can this be converted to a MatrixOf<Scalar>?
+		bool mIsPrimitive : 1;	// For that matter, is the type MatrixOf<Scalar>?
+		ScalarType mType : kBits;	// The type corresponding to Scalar
+	};
+
 	int mSelectRef{LUA_NOREF};	// Method used to select some matrix / scalar combination
-	std::bitset<kInfoN> mInfo;	// Some information about the type
+	Info mInfo;	// Some information about the type
+	const char * mName;	// Cached full name
+	void * mDatum{nullptr};	// Pointer to transient datum for some quick operations
 
-	bool GetInfo (Info which) const { return mInfo[which]; }
+	const Info & GetInfo (void) const { return mInfo; }
+	const char * GetName (void) const { return mName; }
 
-	// Find a type data given a name on top of the stack.
-	static GetTypeData * FromName (lua_State * L)
+	// Helper to make datum-dependent calls that are robust against errors.
+	void BindDatumAndCall (lua_State * L, int nargs, int nresults, void * datum)
 	{
-		lua_pushliteral(L, TYPE_DATA_KEY_SIGNATURE);// ..., name, signature
-		lua_insert(L, -2);	// ..., signature, name
-		lua_concat(L, 2);	// ..., type_name
-		lua_rawget(L, LUA_REGISTRYINDEX);	// ..., type_data?
+		mDatum = datum;
 
-		GetTypeData * td = LuaXS::UD<GetTypeData>(L, -1);
+		bool bOK = lua_pcall(L, nargs, nresults, 0) == 0;	// ..., results / err
 
-		lua_pop(L, 1);	// ...
+		mDatum = nullptr;
 
-		return td;
+		if (!bOK) lua_error(L);
 	}
 
 	// Find a type data for an Eigen object on the stack.
 	static GetTypeData * FromObject (lua_State * L, int arg)
 	{
-		if (!GetName(L, arg)) return nullptr;	// ...[, name]
+		if (!lua_getmetatable(L, arg)) return nullptr;	// ...[, meta]
 
-		return FromName(L);
+		lua_getfield(L, LUA_REGISTRYINDEX, EIGEN_META_TO_TYPE_DATA_KEY);// ..., meta, meta_to_type_data
+		lua_insert(L, -2);	// ..., meta_to_type_data, meta
+		lua_rawget(L, -2);	// ..., meta_to_type_data, type_data?
+
+		GetTypeData * td = LuaXS::UD<GetTypeData>(L, -1);
+
+		lua_pop(L, 2);	// ...
+
+		return td;
 	}
 
-	// Get the type name of an Eigen object on the stack.
-	static bool GetName (lua_State * L, int arg)
+	// Invoke select logic for the type.
+	int Select (lua_State * L)
 	{
-		arg = CoronaLuaNormalize(L, arg);
-
-		if (!luaL_getmetafield(L, arg, "getTypeName")) return false;
-
-		lua_call(L, 0, 1);	// ..., name
-
-		return true;
-	}
-
-	// Invoke select logic for the type whose name is on top of the stack.
-	static int Select (lua_State * L)
-	{
-		GetTypeData * td = FromName(L);
-
-		luaL_argcheck(L, td, -1, "Type not part of Eigen library");
-		luaL_argcheck(L, td->mSelectRef != LUA_NOREF, -1, "Type does not support select()");
-		lua_getref(L, td->mSelectRef);	// bm, then, else[, name], select
-		lua_insert(L, 1);	// select, bm, then, else[, name]
+		luaL_argcheck(L, mSelectRef != LUA_NOREF, -1, "Type does not support select()");
+		lua_getref(L, mSelectRef);	// bm, then, else, select
+		lua_insert(L, 1);	// select, bm, then, else
 		lua_settop(L, 4);	// select, bm, then, else
 		lua_call(L, 3, 1);	// selection
 
@@ -147,30 +165,59 @@ template<typename T> struct InstanceGetter : GetTypeData {
 
 		if (!sThis && (opts == eCreateIfMissing || opts == eFetchIfMissing))
 		{
-			// Build up the type's name / type data's key. If the library is loaded in parts, e.g. as
-			// eigencore + eigendouble, a type might already exist, so this is checked first. Failing
-			// that, we move on to actual creation, if desired.
+			int top = lua_gettop(L);
+
+			// Build up the type's name.
 			luaL_Buffer buff;
 
 			luaL_buffinit(L, &buff);
-			luaL_addstring(&buff, TYPE_DATA_KEY_SIGNATURE "eigen.");
+			luaL_addstring(&buff, "eigen.");
 
-			AuxTypeName<T::Type>(&buff, L);
+			AuxTypeName<typename T::Type>(&buff, L);
 
-			luaL_pushresult(&buff);	// ...[, new_type], name
+			luaL_pushresult(&buff);	// ..., name
 
-			const char * name = lua_tostring(L, -1);
+			// If the library is loaded in parts, e.g. as eigencore + eigendouble, the type
+			// might already exist. An instantiated type will have a named metatable, whereas
+			// one that has only been created will be temporarily registered under its name.
+			// If either approach yields the type, our work is done.
+			lua_getfield(L, LUA_REGISTRYINDEX, EIGEN_META_TO_TYPE_DATA_KEY);// ..., name, meta_to_type_data
+			luaL_getmetatable(L, lua_tostring(L, -2));	// ..., name, meta_to_type_data, meta?
+			lua_rawget(L, -2);	// ..., name, meta_to_type_data, td?
 
-			lua_rawget(L, LUA_REGISTRYINDEX);	// ...[, new_type], td?
+			if (lua_isnil(L, -1))
+			{
+				lua_pushvalue(L, -3);	// ..., name, meta_to_type_data, nil, name
+				lua_rawget(L, -3);	// name, meta_to_type_data, nil, td?
+			}
 
-			sThis = !lua_isnil(L, -1) ? LuaXS::UD<T>(L, -1) : nullptr;
+			sThis = LuaXS::UD<T>(L, -1);
 
-			lua_pop(L, 1);	// ...[, new_type]
+			// Failing that, create the type on demand.
+			lua_settop(L, top + 1);	// ..., name
 
-			if (!sThis && opts == eCreateIfMissing) sThis = T::Create(L, name);
+			if (!sThis && opts == eCreateIfMissing) sThis = T::Create(L);
+
+			lua_settop(L, top);	// ...
 		}
 
 		return sThis;
+	}
+};
+
+//
+template<typename T> struct OnCache : std::false_type {
+	static int Do (lua_State * L) { return 0; }
+};
+
+template<typename U, int Rows, int Cols, int Options, int MaxRows, int MaxCols> struct OnCache<Eigen::Matrix<U, Rows, Cols, Options, MaxRows, MaxCols>> : std::true_type {
+	static int Do (lua_State * L)
+	{
+		using M = Eigen::Matrix<U, Rows, Cols, Options, MaxRows, MaxCols>;
+
+		*LuaXS::UD<M>(L, 1) = M{};
+
+		return 0;
 	}
 };
 
@@ -178,84 +225,43 @@ template<typename T> struct InstanceGetter : GetTypeData {
 template<typename T, typename R = MatrixOf<typename T::Scalar>> struct TypeData : InstanceGetter<TypeData<T>> {
 	typedef T Type;
 
-	const char * mName;	// Cached full name
-	int mGetAnObjectRef;// Function used to get an instance from the cache, if available
-	int mPushRef{LUA_NOREF};// Function used to push matrix on stack
-	int mRegisterObjectRef;	// Function used to add the object to a caching context, when possible
-	int mRemoveObjectRef;	// Function used to send the object back to the cache
-	int mVectorRingRef{LUA_NOREF};	// Used by vector blocks to maintain a ring of vectors for short term use
-	int mWeakListsRef{LUA_NOREF};	// Any weak-keyed tables needed by instances of this type
-	void * mDatum{nullptr};	// Pointer to transient datum for some quick operations
+	int mCacheFuncRef;	// Function used to interact with the cache
+	int mPushRef{LUA_NOREF};// Function used to push instance on stack
+	int mVectorRingRef{LUA_NOREF};	// Used by vector blocks to maintain a transient ring of vectors
 
-	// Get the name of this type, or the key used by its type data.
-	const char * GetName (bool bTypeDataKey = false) const
-	{
-		return bTypeDataKey ? mName : mName + sizeof(TYPE_DATA_KEY_SIGNATURE) - 1;
-	}
-
-	// TODO: there could be trouble if the "parent" is reclaimed by the cache but not the dependent object...
 	// If the object on the stack is weakly keyed to an item in the given category, pushes it
-	// onto the stack; otherwise, pushes nil. (This is useful for "parent"-type connections
-	// like maps and views, to keep the original objects alive.)
+	// onto the stack; otherwise, pushes nil. (This is useful for objects like maps and views
+	// that must keep around some sort of "parent" object.)
 	int GetRef (lua_State * L, const char * category, int arg) const
 	{
 		arg = CoronaLuaNormalize(L, arg);
 
-		lua_getref(L, mWeakListsRef);	// ..., arg, ..., weak_lists?
-
-		if (!lua_isnil(L, -1))
-		{
-			lua_getfield(L, -1, category);	// ..., arg, ..., weak_lists, weak_list?
-			lua_remove(L, -2);	// ..., arg, ..., weak_list?
-
-			if (!lua_isnil(L, -1))
-			{
-				lua_pushvalue(L, arg);	// ..., arg, ..., weak_list, arg
-				lua_rawget(L, -2);	// ..., arg, ..., weak_list, value
-				lua_replace(L, -2);	// ..., arg, ..., value
-			}
-		}
+		lua_getref(L, mCacheFuncRef);	// ..., CacheFunc
+		lua_pushliteral(L, "get_ref");	// ..., CacheFunc, "get_ref"
+		lua_pushvalue(L, arg);	// ..., CacheFunc, "get_ref", object
+		lua_pushstring(L, category);// ..., CacheFunc, "get_ref", object, category
+		lua_call(L, 3, 1);	// ..., value?
 
 		return 1;
 	}
 
-	// Given an object on the stack, weakly keys it in a given category to the item on the top
-	// of the stack, popping that. (This would also overwrite any value already so keyed, though
-	// thus far all use cases are one-time startup binds.)
+	// Given an object on the stack, weakly keys it in a given category to the item on the
+	// top of the stack, removing the item in the process.
 	void Ref (lua_State * L, const char * category, int arg)
 	{
 		luaL_argcheck(L, arg != -1 && arg != lua_gettop(L), arg, "Attempt to ref self");
-
-		if (mWeakListsRef == LUA_NOREF)
-		{
-			lua_newtable(L);// ..., arg, ..., item_to_ref, lists
-
-			mWeakListsRef = lua_ref(L, 1);	// ..., arg, ..., item_to_ref
-		}
-
-		lua_pushvalue(L, arg);	// ..., arg, ..., item_to_ref, arg
-		lua_insert(L, -2);	// ..., arg, ..., arg, item_to_ref
-		lua_getref(L, mWeakListsRef);	// ..., arg, ..., arg, item_to_ref, weak_lists
-		lua_getfield(L, -1, category);	// ..., arg, ..., arg, item_to_ref, weak_lists, weak_list?
-
-		if (lua_isnil(L, -1))
-		{
-			lua_pop(L, 1);	// ..., arg, ..., arg, item_to_ref, weak_lists
-
-			LuaXS::NewWeakKeyedTable(L);// ..., arg, ..., arg, item_to_ref, weak_lists, new_weak_list
-
-			lua_pushvalue(L, -1);	// ..., arg, ..., arg, item_to_ref, weak_lists, new_weak_list, new_weak_list
-			lua_setfield(L, -3, category);	// ..., arg, ..., arg, item_to_ref, weak_lists = { ..., category = new_weak_list }, new_weak_list
-		}
-
-		lua_insert(L, -4);	// ..., arg, ..., weak_list, arg, item_to_ref, weak_lists
-		lua_pop(L, 1);	// ..., arg, ..., weak_list, arg, item_to_ref
-		lua_rawset(L, -3);	// ..., arg, ..., weak_list = { ..., [arg] = item_item_to_ref }
-		lua_pop(L, 1);	// ..., arg, ...
+		lua_pushvalue(L, arg);	// ..., item_to_ref, object
+		lua_pushliteral(L, "ref");	// ..., item_to_ref, object, "ref"
+		lua_insert(L, -2);	// ..., item_to_ref, "ref, object
+		lua_pushstring(L, category);// ..., item_to_ref, "ref", object, category
+		lua_pushvalue(L, -4);	// ..., item_to_ref, "ref", object, category, item_to_ref
+		lua_getref(L, mCacheFuncRef);	// ..., item_to_ref, "ref", object, category, item_to_ref, CacheFunc
+		lua_replace(L, -6);	// ..., CacheFunc, "ref", object, category, item_to_ref
+		lua_call(L, 4, 0);	// ...
 	}
 
-	// Variant of Ref() that looks for the item somewhere on the stack, instead defaulting to
-	// the object itself being on top of the stack. The stack is left intact.
+	// Variant of Ref() that looks for the item somewhere other than the top of the stack,
+	// with that instead being the object's default position. The stack is left intact.
 	void RefAt (lua_State * L, const char * category, int pos, int arg = -1)
 	{
 		arg = CoronaLuaNormalize(L, arg);
@@ -269,42 +275,13 @@ template<typename T, typename R = MatrixOf<typename T::Scalar>> struct TypeData 
 	// a given category. (Currently unused.)
 	void Unref (lua_State * L, const char * category, int arg)
 	{
-		if (mWeakListsRef == LUA_NOREF) return;
+		arg = CoronaLuaNormalize(L, arg);
 
-		lua_pushvalue(L, arg);	// ..., arg, ..., arg
-		lua_getref(L, mWeakListsRef);	// ..., arg, ..., arg, weak_lists
-		lua_getfield(L, -1, category);	// ..., arg, ..., arg, weak_lists, weak_list?
-
-		if (lua_isnil(L, -1)) lua_pop(L, 3);// ..., arg, ...
-
-		else
-		{
-			lua_insert(L, -3);	// ..., arg, ..., weak_list, arg, weak_lists
-			lua_pop(L, 1);	// ..., arg, ..., weak_list, arg
-			lua_pushnil(L);	// ..., arg, ..., weak_list, arg, nil
-			lua_rawset(L, -3);	// ..., arg, ..., weak_list = { ..., [arg] = nil }
-			lua_pop(L, 1);	// ..., arg, ...
-		}
-	}
-
-	// Gets the key under which the cache binding logic is stored in the registry. Since boolean
-	// matrices are by design part of the core and registered first, their own type data is used
-	// as this key. The specialization accounts for this when the BoolMatrix type data itself is
-	// created, which is done explicitly rather than lazily via a New(), and expects to pull the
-	// aforementioned cache logic off the stack.
-	template<typename U = T> static void * GetTypeKey (lua_State * L, TypeData<T> *)
-	{
-		return TypeData<BoolMatrix>::Get(L, eFetchIfMissing);
-	}
-
-	template<> static void * GetTypeKey<BoolMatrix> (lua_State * L, TypeData<T> * td)
-	{
-		lua_insert(L, -2);	// ..., td, new_type
-		lua_pushlightuserdata(L, td);	// ..., td, new_type, key
-		lua_insert(L, -2);	// ..., td, key, new_type
-		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., td; registry = { ..., [key] = new_type }
-
-		return td;
+		lua_getref(L, mCacheFuncRef);	// ..., CacheFunc
+		lua_pushliteral(L, "unref");// ..., CacheFunc, "unref"
+		lua_pushvalue(L, arg);	// ..., CacheFunc, "unref", object
+		lua_pushstring(L, category);// ..., CacheFunc, "unref", object, category
+		lua_call(L, 3, 0);	// ...
 	}
 
 	// Add push and select functions, allowing interop with code that may be in other modules.
@@ -338,74 +315,48 @@ template<typename T, typename R = MatrixOf<typename T::Scalar>> struct TypeData 
 	};
 
 	// Perform the actual creation, if possible for this sort of type.
-	template<bool = IsMatrixFamilyImplemented<R>::value> static TypeData<T> * Create (lua_State * L, const char * name)
+	template<bool = IsMatrixFamilyImplemented<R>::value> static TypeData<T> * Create (lua_State * L)
 	{
-		auto td = LuaXS::NewTyped<TypeData<T>>(L);// ...[, new_type], td
+		// Register the new type data. Its metatable is a few steps away from existence, i.e.
+		// in New(), but since nothing external will need it beforehand, we can use the name
+		// as a provisional key.
+		lua_getfield(L, LUA_REGISTRYINDEX, EIGEN_META_TO_TYPE_DATA_KEY);// ..., name, meta_to_type_data
+		lua_pushvalue(L, -2);	// ..., name, meta_to_type_data, name
 
-		// Register the new type data and fetch the cache binding logic.
-		void * key = GetTypeKey<T>(L, td);	// ..., td
+		auto td = LuaXS::NewTyped<TypeData<T>>(L);// ..., name, meta_to_type_data, name, td
 
-		lua_setfield(L, LUA_REGISTRYINDEX, name);	// ...; registry = { ..., [eigen.name] = td }
-		lua_pushlightuserdata(L, key);	// ..., key
-		lua_rawget(L, LUA_REGISTRYINDEX);	// ..., new_type
+		lua_rawset(L, -3);	// ..., meta_to_type_data = { ..., name = td }
+		lua_pop(L, 1);	// ...
 
-		// Wire the new type into the cache, supplying some callbacks. The first of these is
-		// called if the instance is reclaimed: any associations made by Ref() are cleared.
-		lua_createtable(L, 0, 2);	// ..., new_type, opts
-		lua_pushcfunction(L, [](lua_State * L) {
-			auto td = Get(L);
+		// Fetch the cache binding logic and wire the new type into the cache. Some types can
+		// safely do some cleanup when cached, rather than when being fetched, in which cases
+		// this additional logic is supplied as well.
+		lua_getfield(L, LUA_REGISTRYINDEX, EIGEN_NEW_TYPE_KEY);	// ..., name, new_type
 
-			lua_getref(L, td->mWeakListsRef);	// object, weak_lists?
+		if (OnCache<T>::value) lua_pushcfunction(L, OnCache<T>::Do);	// ..., name, new_type[, on_cache]
 
-			if (!lua_isnil(L, -1))
-			{
-				for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1))
-				{
-					lua_pushvalue(L, 1);// object, weak_lists, key, weak_list, object
-					lua_pushnil(L);	// object, weak_lists, key, weak_list, object, nil
-					lua_rawset(L, -3);	// object, weak_lists, key, weak_list = { ..., [object] = nil }
-				}
-			}
+		lua_call(L, OnCache<T>::value ? 1 : 0, 1);	// ..., name, CacheFunc
 
-			return 0;
-		});	// ..., new_type, opts, on_cache
-		lua_setfield(L, -2, "on_cache");// ..., new_type, opts = { on_cache = on_cache }
-
-		// Secondly, when the object is fetched from the cache, its current contents are destructed.
-		// This is done here rather than when caching to avoid problems during lua_close().
-		// TODO: for types like dynamic matrices this could be done in on_cache, by calling the destructor here and then
-		// placement new'ing a null matrix, likewise with maps...
-		lua_pushcfunction(L, LuaXS::TypedGC<T>);// ..., new_type, opts, on_fetch
-		lua_setfield(L, -2, "on_fetch");// ..., new_type, opts = { on_cache, on_fetch = on_fetch }
-
-		// Bind the type to the cache.
-		lua_call(L, 1, 3);	// ..., GetAnObject, RegisterObject, RemoveObject
-
-		td->mRemoveObjectRef = lua_ref(L, 1);	// ..., GetAnObject, RegisterObject
-		td->mRegisterObjectRef = lua_ref(L, 1);	// ..., GetAnObject
-		td->mGetAnObjectRef = lua_ref(L, 1);// ...
+		td->mCacheFuncRef = lua_ref(L, 1);	// ..., name
 
 		// Hook up routines to push a matrix, e.g. from another shared library, and with similar
 		// reasoning to use such matrices in BoolMatrix::select().
 		AddPushAndSelect<> apas{L, td};
 
 		// Capture some information needed when the exact type is unknown.
-		td->mInfo[eIsConvertible] = std::is_convertible<T, R>::value;
-		td->mInfo[eIsPrimitive] = std::is_same<T, R>::value;
+		td->mInfo.mIsConvertible = std::is_convertible<T, R>::value;
+		td->mInfo.mIsPrimitive = std::is_same<T, R>::value;
+		td->mInfo.mType = GetScalarType<typename R::Scalar>::value;
 
 		// Save the name for use down the road.
-		lua_pushstring(L, name);// ..., interned_name
-
 		td->mName = lua_tostring(L, -1);
-
-		lua_pop(L, 1);	// ...
 
 		return td;
 	}
 
-	template<> static TypeData<T> * Create<false> (lua_State * L, const char * name)
+	template<> static TypeData<T> * Create<false> (lua_State * L)
 	{
-		luaL_error(L, "Unable to implement %s\n", name);
+		luaL_error(L, "Unable to implement %s\n", lua_tostring(L, -1));
 
 		return nullptr;
 	}
@@ -416,7 +367,7 @@ template<typename T> bool HasType (lua_State * L, int arg)
 {
 	auto td = TypeData<T>::Get(L);
 
-	return td != nullptr && LuaXS::IsType(L, td->GetName(), arg);
+	return td != nullptr && td == GetTypeData::FromObject(L, arg);
 }
 
 // Helper to convert an object to a matrix, say for an "asMatrix" method. This also has a
@@ -450,8 +401,9 @@ template<typename T, typename ... Args> T * New (lua_State * L, Args && ... args
 	// Try to fetch an instance from the cache. If found, reuse its memory.
 	auto td = TypeData<T>::Get(L, GetTypeData::eCreateIfMissing);
 
-	lua_getref(L, td->mGetAnObjectRef);	// ..., GetAnObject
-	lua_call(L, 0, 1);	// ..., object?
+	lua_getref(L, td->mCacheFuncRef);	// ..., CacheFunc
+	lua_pushliteral(L, "fetch");// ..., CacheFunc, "fetch"
+	lua_call(L, 1, 1);	// ..., object?
 
 	T * object = nullptr;
 
@@ -459,7 +411,12 @@ template<typename T, typename ... Args> T * New (lua_State * L, Args && ... args
 
 	else lua_pop(L, 1);	// ...
 
-	if (object) new (object) T(std::forward<Args>(args)...);
+	if (object)
+	{
+		LuaXS::DestructTyped<T>(L, -1);
+
+		new (object) T(std::forward<Args>(args)...);
+	}
 
 	// Otherwise, add a new object. If the type itself is new, attach its methods as well.
 	else
@@ -469,8 +426,22 @@ template<typename T, typename ... Args> T * New (lua_State * L, Args && ... args
 		LuaXS::AttachMethods(L, td->GetName(), [](lua_State * L) {
 			AttachMethods<T> am{L};
 
+			// Now that we have a metatable, patch the type data lookup.
+			auto td = TypeData<T>::Get(L);
+
+			lua_getfield(L, LUA_REGISTRYINDEX, EIGEN_META_TO_TYPE_DATA_KEY);// ..., meta, meta_to_type_data
+			lua_pushvalue(L, -2);	// ..., meta, meta_to_type_data, meta
+			lua_getfield(L, -2, td->GetName());	// ..., meta, meta_to_type_data, meta, td
+			lua_rawset(L, -3);	// ..., meta, meta_to_type_data = { ..., [meta] = td }
+			lua_pushnil(L);	// ..., meta, meta_to_type_data, nil
+			lua_setfield(L, -2, td->GetName());	// ..., meta, meta_to_type_data = { ..., [meta] = td, name = nil }
+			lua_pop(L, 1);	// ..., meta
+
+			// Without exception, add a GC metamethod.
+			LuaXS::AttachGC(L, LuaXS::TypedGC<T>);
+
 			// Add a type name getter method, allowing for interal queries for the type key.
-			lua_pushstring(L, TypeData<T>::Get(L)->GetName());	// ..., meta, name
+			lua_pushstring(L, td->GetName());	// ..., meta, name
 			lua_pushcclosure(L, [](lua_State * L) {
 				lua_pushvalue(L, lua_upvalueindex(1));	// [object, ]name
 
@@ -481,9 +452,10 @@ template<typename T, typename ... Args> T * New (lua_State * L, Args && ... args
 	}
 
 	// If caching is active, register the object for later reclamation.
-	lua_getref(L, td->mRegisterObjectRef);	// ..., object, RegisterObject
-	lua_pushvalue(L, -2);	// ..., object, RegisterObject, object
-	lua_call(L, 1, 0);	// ..., object
+	lua_getref(L, td->mCacheFuncRef);	// ..., object, CacheFunc
+	lua_pushliteral(L, "register");	// ..., object, CacheFunc, "register"
+	lua_pushvalue(L, -3);	// ..., object, CacheFunc, "register", object
+	lua_call(L, 2, 0);	// ..., object
 
 	return object;
 }
@@ -496,23 +468,10 @@ template<typename T, typename U> int NewRet (lua_State * L, U && m)
 	return 1;
 }
 
-// Common forms for instantiating dependent types.
-#define NEW_REF1_NO_RET(T, KEY, INPUT)	New<T>(L, INPUT);	/* source, ..., new_object */	\
-										TypeData<T>::Get(L)->RefAt(L, KEY, 1)
-#define NEW_REF1(T, KEY, INPUT)	NEW_REF1_NO_RET(T, KEY, INPUT);	/* source, ..., new_object */	\
-																								\
-								return 1
-#define NEW_REF1_DECLTYPE(KEY, INPUT) NEW_REF1(decltype(INPUT), KEY, INPUT) /* source, ..., new_object */
-#define NEW_REF1_DECLTYPE_MOVE(KEY, INPUT) NEW_REF1(decltype(INPUT), KEY, std::move(INPUT)) /* source, ..., new_object */
-
-// Convert a matrix to a pretty-printed string, e.g. for use by __tostring.
-template<typename T> int Print (lua_State * L, const T & m)
+// Variant of NewRet that constructs the new instance as well.
+template<typename T, typename ... Args> int NewRvalue (lua_State * L, Args && ... args)
 {
-	std::stringstream ss;
-
-	ss << m;
-
-	lua_pushstring(L, ss.str().c_str());// m, str
+	New<T>(L, T(std::forward<Args>(args)...));
 
 	return 1;
 }
@@ -530,8 +489,8 @@ template<typename R, bool bRow> struct VectorRef {
 		typename ColVector<typename R::Scalar>
 	>::type;
 	using Type = typename std::conditional<bRow,
-		Eigen::Ref<typename V, 0, Eigen::InnerStride<>>,
-		Eigen::Ref<typename V>
+		Eigen::Ref<V, 0, Eigen::InnerStride<>>,
+		Eigen::Ref<V>
 	>::type;
 
 	std::unique_ptr<Type> mRef;	// Reference to an object to interpret as a vector
@@ -542,7 +501,7 @@ template<typename R, bool bRow> struct VectorRef {
 	bool Changed (void) const { return mChanged; }
 
 	// Add some operators rather than methods for convenient Ref access.
-	const Type & operator * (void)
+	Type & operator * (void)
 	{
 		return *mRef;
 	}
@@ -591,9 +550,9 @@ template<typename R, bool bRow> struct VectorRef {
 	{
 		GetTypeData * td = GetTypeData::FromObject(L, arg);
 
-		luaL_argcheck(L, td && td->GetInfo(GetTypeData::eIsConvertible), arg, "Not a convertible Eigen object");
+		luaL_argcheck(L, td && td->GetInfo().mIsConvertible, arg, "Not a convertible Eigen object");
 
-		R * ptr = td->GetInfo(GetTypeData::eIsPrimitive) ? GetInstance<R>(L, arg) : nullptr;
+		R * ptr = td->GetInfo().mIsPrimitive ? GetInstance<R>(L, arg) : nullptr;
 
 		mChanged = mTransposed = false;
 
@@ -625,28 +584,23 @@ template<typename R, bool bRow> struct VectorRef {
 template<typename R> using ColumnVector = VectorRef<R, false>;
 
 // Acquire an instance whose exact type is expected.
-template<typename T> T * GetInstance (lua_State * L, int arg = 1)
+template<typename T> typename T * GetInstance (lua_State * L, int arg = 1)
 {
-	auto td = TypeData<T>::Get(L);
+	luaL_argcheck(L, HasType<T>(L, arg), arg, "Instance does not have the specified type");
 
-	luaL_argcheck(L, td, arg, "No such type");
-
-	return LuaXS::CheckUD<T>(L, arg, td->GetName());
+	return LuaXS::UD<T>(L, arg);
 }
 
 // Acquire an instance resolved to a matrix type, with shortcuts for common source types.
 template<typename R> R GetInstanceEx (lua_State * L, int arg = 1)
 {
-	if (HasType<R>(L, arg)) return *LuaXS::UD<R>(L, arg);
+	R out;
 
-	R temp;
+	if (HasType<Eigen::Block<R>>(L, arg)) out = *LuaXS::UD<Eigen::Block<R>>(L, arg);
+	else if (HasType<Eigen::Transpose<R>>(L, arg)) out = *LuaXS::UD<Eigen::Transpose<R>>(L, arg);
+	else SetTemp<R, true>(L, &out, arg);
 
-	if (HasType<Eigen::Block<R>>(L, arg)) temp = *LuaXS::UD<Eigen::Block<R>>(L, arg);
-	else if (HasType<Eigen::Transpose<R>>(L, arg)) temp = *LuaXS::UD<Eigen::Transpose<R>>(L, arg);
-	else if (HasType<Eigen::Block<Eigen::Transpose<R>>>(L, arg)) temp = *LuaXS::UD<Eigen::Block<Eigen::Transpose<R>>>(L, arg);
-	else SetTemp(L, &temp, arg);
-
-	return temp;
+	return out;
 }
 
 // Standard boilerplate for getters. Aside from the case of binary metamethods, the first
@@ -655,10 +609,143 @@ template<typename R> R GetInstanceEx (lua_State * L, int arg = 1)
 // since they might be blocks, maps, transposes, etc. In these cases, the object is copied
 // to a new matrix (of some commonly resolved type) that gets returned; this is potentially
 // expensive, but offers flexibility. (The "R" originally stood for "return value", though
-// "raw", "right-hand side", and "resolved" tend to fit as well.)
+// "raw", "right-hand side", "reduced", and "resolved" tend to fit as well.)
 template<typename T, typename R> struct InstanceGetters {
 	static T * GetT (lua_State * L, int arg = 1) { return GetInstance<T>(L, arg); }
 	static R GetR (lua_State * L, int arg = 1) { return GetInstanceEx<R>(L, arg); }
+
+	//
+	template<typename T> struct NonBasicReject : std::true_type {};
+	template<typename U, int R, int C, bool B> struct NonBasicReject<Eigen::Block<U, R, C, B>> : IsMap<U> {};
+	template<typename U> struct NonBasicReject<Eigen::Transpose<U>> : IsMap<U> {};
+
+	//
+	using ArraySourceType = typename std::conditional<
+		IsBasic<T>::value || !NonBasicReject<T>::value,
+		const T &,
+		R
+	>::type;
+
+	//
+	using ArrayType = decltype(std::declval<ArraySourceType>().array());
+
+	//
+	template<typename WA> static int WithArray (lua_State * L, WA && body)
+	{
+		ArraySourceType as = *GetT(L);
+
+		body(as.array());
+
+		return 1;
+	}
+
+	//
+	using RefArgType = typename std::conditional<
+		std::is_same<T, R>::value,
+		//std::is_constructible<Eigen::Ref<const R>, const T &>::value,
+		// TODO: Visual Studio seems to bail on this version ^^^, but is it viable?
+		const T &,
+		R
+	>::type;
+
+	//
+	using RefType = R;
+	// using RefType = Eigen::Ref<const R>; // TODO: see note for RefArgType
+
+	template<typename WR> static int WithRef (lua_State * L, WR && body)
+	{
+		RefArgType rarg = *GetT(L);
+
+		body(rarg);
+
+		return 1;
+	}
+};
+
+//
+template<typename T> struct Nested {
+	using Type = T;
+};
+
+template<typename U, int O, typename S> struct Nested<Eigen::Map<U, O, S>> {
+	using Type = U;
+};
+
+template<typename U, int O, typename S> struct Nested<Eigen::Ref<U, O, S>> {
+	using Type = U;
+};
+
+template<typename U, int R, int C, bool B> struct Nested<Eigen::Block<U, R, C, B>> {
+	using Type = U;
+};
+
+template<typename U> struct Nested<Eigen::Transpose<U>> {
+	using Type = U;
+};
+
+//
+template<typename T> struct IsLvalue : Eigen::internal::is_lvalue<typename Nested<T>::Type> {};
+template<typename U> struct IsLvalue<const U> : std::false_type {};
+
+// 
+template<typename T> struct TempRAII {
+	//
+	template<typename = T> struct FromType {
+		using N = typename Nested<T>::Type;
+		using Type = T *;
+
+		static T * Get (lua_State * L, int arg)
+		{
+			return GetInstance<T>(L, arg);
+		}
+	};
+
+	template<typename U, bool B> struct FromType<VectorRef<U, B>> {
+		using N = typename VectorRef<U, B>::V;
+		using Type = VectorRef<U, B>;
+
+		static VectorRef<U, B> Get (lua_State * L, int arg)
+		{
+			return VectorRef<U, B>{L, arg};
+		}
+	};
+
+	using N = typename FromType<>::N;
+	using R = MatrixOf<typename N::Scalar, N::RowsAtCompileTime, N::ColsAtCompileTime>;
+
+	typename FromType<>::Type mFrom;// 
+	R mTemp;//
+
+	//
+	R & operator * (void)
+	{
+		return mTemp;
+	}
+
+	R * operator -> (void)
+	{
+		return &mTemp;
+	}
+
+	//
+	TempRAII (lua_State * L, int arg = 1) : mFrom{FromType<>::Get(L, arg)}, mTemp{*mFrom}
+	{
+	}
+
+	//
+	~TempRAII (void)
+	{
+		*mFrom = mTemp;
+	}
+};
+
+//
+template<typename T, typename R> struct TempInstanceGetters : InstanceGetters<TempRAII<T>, R>
+{
+	static TempRAII<T> GetT (lua_State * L, int arg = 1)
+	{
+		return TempRAII<T>{L, arg};
+	}
 };
 
 // The following builds up a name piecemeal by unraveling important pieces of the type. In
@@ -668,9 +755,10 @@ template<typename T, typename R> struct InstanceGetters {
 // since the implementation may be spread among two or more shared libraries (with a common
 // Lua state), e.g. eigencore + eigendouble.
 template<typename T> struct AuxTypeName {
-	AuxTypeName (luaL_Buffer *, lua_State * L)
+	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_error(L, "Unsupported type");
+		luaL_pushresult(B);	// ..., result
+		luaL_error(L, "Unsupported type; current progress: %s", lua_tostring(L, -1));
 	}
 };
 
@@ -707,72 +795,86 @@ template<> struct AuxTypeName<std::complex<double>> {
 	AuxTypeName (luaL_Buffer * B, lua_State *) { luaL_addstring(B, "cdouble"); }
 };
 
-void AddDynamicOrN (luaL_Buffer * B, lua_State * L, int n)
+void AddComma (luaL_Buffer * B)
 {
-	if (n == Eigen::Dynamic) luaL_addstring(B, "dynamic");
-
-	else
-	{
-		lua_pushfstring(L, "%d", n);// ..., n
-		luaL_addvalue(B);	// ...
-	}
+	luaL_addstring(B, ", ");
 }
 
-template<typename Scalar, int R, int C, int O, int MR, int MC> struct AuxTypeName<Eigen::Matrix<Scalar, R, C, O, MR, MC>> {
+void AddFormatted (luaL_Buffer * B, lua_State * L, const char * fmt, int arg)
+{
+	lua_pushfstring(L, fmt, arg);	// ..., arg
+	luaL_addvalue(B);	// ...
+}
+
+void AddFormatted (luaL_Buffer * B, lua_State * L, const char * fmt, const char * arg)
+{
+	lua_pushfstring(L, fmt, arg);	// ..., arg
+	luaL_addvalue(B);	// ...
+}
+
+void CloseType (luaL_Buffer * B)
+{
+	luaL_addstring(B, ">");
+}
+
+void OpenType (luaL_Buffer * B, const char * name)
+{
+	luaL_addstring(B, name);
+	luaL_addstring(B, "<");
+}
+
+void AddDynamicOrN (luaL_Buffer * B, lua_State * L, int n)
+{
+	if (n == Eigen::Dynamic) luaL_addstring(B, "Dynamic");
+	else AddFormatted(B, L, "%d", n);
+}
+
+template<int Outer, int Inner> struct AuxTypeName<Eigen::Stride<Outer, Inner>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		AuxTypeName<Scalar>(B, L);
+		if (Outer == 0 && Inner == 0) return;
 
-		if (R == 1 || C == 1)
-		{
-			lua_pushfstring(L, "_%s_vector[", R == 1 ? "row" : "col");	// ..., what
-			luaL_addvalue(B);	// ...
-
-			AddDynamicOrN(B, L, R == 1 ? C : R);
-		}
-
-		else
-		{
-			luaL_addstring(B, "_matrix[");
-
-			AddDynamicOrN(B, L, R);
-
-			luaL_addstring(B, ", ");
-
-			AddDynamicOrN(B, L, C);
-		}
-
-		// ^^^ TODO: options, max_rows, max_cols, if different from defaults
-
-		luaL_addstring(B, "]");
+		OpenType(B, ", Stride");
+		AddFormatted(B, L, "%d", Outer);
+		AddFormatted(B, L, ", %d", Inner);
+		CloseType(B);
 	}
 };
 
-template<> struct AuxTypeName<Eigen::Stride<0, 0>> {
-	AuxTypeName (luaL_Buffer * B, lua_State *) {}
-};
-
-template<> struct AuxTypeName<Eigen::InnerStride<>> {
-	AuxTypeName (luaL_Buffer * B, lua_State *) { luaL_addstring(B, ", InnerStride"); }
-};
-
-template<> struct AuxTypeName<Eigen::OuterStride<>> {
-	AuxTypeName (luaL_Buffer * B, lua_State *) { luaL_addstring(B, ", OuterStride"); }
-};
-
-template<typename U, int O, typename S> struct AuxTypeName<Eigen::Map<U, O, S>> {
+template<int Value> struct AuxTypeName<Eigen::InnerStride<Value>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_addstring(B, "Map<");
+		OpenType(B, ", InnerStride");
+
+		if (Value != Eigen::Dynamic) AddFormatted(B, L, "%d", Value);
+
+		CloseType(B);
+	}
+};
+
+template<int Value> struct AuxTypeName<Eigen::OuterStride<Value>> {
+	AuxTypeName (luaL_Buffer * B, lua_State * L)
+	{
+		OpenType(B, ", OuterStride");
+
+		if (Value != Eigen::Dynamic) AddFormatted(B, L, "%d", Value);
+
+		CloseType(B);
+	}
+};
+
+template<typename U, int O, typename S> struct AuxTypeName<Eigen::Ref<U, O, S>> {
+	AuxTypeName (luaL_Buffer * B, lua_State * L)
+	{
+		OpenType(B, "Ref");
 
 		AuxTypeName<U>(B, L);
 
-		lua_pushfstring(L, ", %d", O);// ..., options
-		luaL_addvalue(B);	// ...
+		AddFormatted(B, L, ", %d", O);
 
 		AuxTypeName<S>(B, L);
 
-		luaL_addstring(B, ">");
+		CloseType(B);
 	}
 };
 
@@ -780,11 +882,11 @@ template<typename U, int O, typename S> struct AuxTypeName<Eigen::Map<U, O, S>> 
 template<typename U> struct AuxTypeName<Eigen::Transpose<U>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_addstring(B, "Transpose<");
+		OpenType(B, "Transpose");
 
 		AuxTypeName<U>(B, L);
 
-		luaL_addstring(B, ">");
+		CloseType(B);
 	}
 };
 

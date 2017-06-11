@@ -27,7 +27,7 @@
 
 // Common Cholesky methods body.
 template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<U, R> {
-	CholeskyMethodsBase (lua_State * L) : SolverMethodsBase<U, R>(L)
+	CholeskyMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{

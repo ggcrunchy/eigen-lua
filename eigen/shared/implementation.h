@@ -23,27 +23,10 @@
 
 #pragma once
 
-#include "CoronaLua.h"
-#include "CoronaLibrary.h"
-#include "utils/Blob.h"
-#include "utils/Thread.h"
-
-// Propagate asserts to Lua.
-#ifndef eigen_assert
-	#define eigen_assert(x) if (!(x)) luaL_error(tls_LuaState, "Eigen error: " #x);
-#endif
-
-// Let eigen_assert() know the main state on a given thread.
-static ThreadXS::TLS<lua_State *> tls_LuaState;
-
 #include "config.h"
-#include "matrix.h"
 #include "types.h"
 #include "utils.h"
-#include "bool_matrix.h"
-#include <Eigen/Eigen>
-#include <algorithm>
-#include <type_traits>
+#include "matrix.h"
 
 // Add LinSpaced*() for non-boolean matrices.
 template<typename M> static void AddLinSpaced (lua_State * L)
@@ -76,7 +59,7 @@ template<typename M, bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && 
 			{
 				"Umeyama", [](lua_State * L)
 				{
-					return NewRet<M>(L, Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "NoSaling", 3)));// src, dst[, no_scaling], xform
+					return NewRet<M>(L, Eigen::umeyama(*GetInstance<M>(L, 1), *GetInstance<M>(L, 2), !WantsBool(L, "NoScaling", 3)));	// src, dst[, no_scaling], xform
 				}
 			},
 			{ nullptr, nullptr }
@@ -140,7 +123,7 @@ template<typename M> static void AddType (lua_State * L)
 		},
 	#ifdef WANT_MAP
 		{
-			"MatrixFromMemory", [](lua_State * L)
+			"Map", [](lua_State * L)
 			{
 				BlobXS::State state{L, 1};
 				
@@ -171,7 +154,7 @@ template<typename M> static void AddType (lua_State * L)
 	#endif
 	#ifdef WANT_MAP_WITH_CUSTOM_STRIDE
 		/*{
-			"MatrixFromMemoryWithInnerStride", [](lua_State * L)
+			"MapWithInnerStride", [](lua_State * L)
 			{
 				lua_settop(L, 4);	// memory, m[, n], stride
 
@@ -198,7 +181,7 @@ template<typename M> static void AddType (lua_State * L)
 				NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], stride, map
 			}
 		}, {
-			"MatrixFromMemoryWithOuterStride", [](lua_State * L)
+			"MapWithOuterStride", [](lua_State * L)
 			{
 				lua_settop(L, 4);	// memory, m[, n], stride
 
@@ -227,7 +210,7 @@ template<typename M> static void AddType (lua_State * L)
 		},*/
 	#endif
 		{
-			"NewMatrix", [](lua_State * L)
+			"Matrix", [](lua_State * L)
 			{
 				if (!lua_isnoneornil(L, 1))
 				{
@@ -295,7 +278,10 @@ template<typename M> static void AddType (lua_State * L)
 	AddUmeyama<M> au{L};
 
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
-		lua_setfield(L, -2, TypeData<M>::Get(L, GetTypeData::eCreateIfMissing)->GetName());	// eigen = { ..., name = funcs }
+		TypeName<typename M::Scalar>(L);// eigen, funcs, name
+
+		lua_insert(L, -2);	// eigen, name, funcs
+		lua_rawset(L, -3);	// eigen = { ..., name = funcs }
 	#endif
 }
 
@@ -315,25 +301,24 @@ CORONA_EXPORT int PLUGIN_NAME (lua_State * L)
 		if (lua_pcall(L, 1, 1, 0) != 0) lua_error(L);	// ..., cachestack / err
 
 		lua_getfield(L, -1, "NewCacheStack");	// ..., cachestack, NewCacheStack
-		lua_call(L, 0, 2);	// ..., cachestack, NewType, WithContext
+		lua_call(L, 0, 2);	// ..., cachestack, NewType, WithLayer
 	#endif
 
 	// Register the module with Corona.
 	// TODO: make robust for other threads
 	luaL_Reg no_funcs[] = { { nullptr, nullptr } };
 
-	CoronaLibraryNew(L, EIGEN_LIB_NAME(PLUGIN_SUFFIX), "com.xibalbastudios", 1, 0, no_funcs, nullptr);	// ...[, cachestack, NewType, WithContext], M
+	CoronaLibraryNew(L, EIGEN_LIB_NAME(PLUGIN_SUFFIX), "com.xibalbastudios", 1, 0, no_funcs, nullptr);	// ...[, cachestack, NewType, WithLayer], M
 
 	// If this is the core or all-in-one module, add the WithCache() routine just supplied.
-	// The boolean matrix type is then created; as a side effect, it adds the cache binding
-	// logic to the registry, using its type data as key, q.v. GetTypeKey().
+	// Register the associated binding logic and create a metatable-to-type table.
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
-		lua_insert(L, -2);	// ..., cachestack, NewType, M, WithContext
-		lua_setfield(L, -2, "WithCache");	// ..., cachestack, NewType, M = { WithCache = WithContext }
+		lua_insert(L, -2);	// ..., cachestack, NewType, M, WithLayer
+		lua_setfield(L, -2, "WithCache");	// ..., cachestack, NewType, M = { WithCache = WithLayer }
 		lua_insert(L, -3);	// ..., M, cachestack, NewType
-
-		auto td = TypeData<BoolMatrix>::Get(L, GetTypeData::eCreateIfMissing);	// ..., M, cachestack; registry = { ..., [bool_matrix_type_data] = NewType }
-
+		lua_setfield(L, LUA_REGISTRYINDEX, EIGEN_NEW_TYPE_KEY);	// ..., M, cachestack; registry = { ..., NEW_TYPE_KEY = NewType }
+		lua_newtable(L);// M, cachestack, meta_to_type_data
+		lua_setfield(L, LUA_REGISTRYINDEX, EIGEN_META_TO_TYPE_DATA_KEY);// ..., cachestack; registry = { ..., NEW_TYPE_KEY, META_TO_TYPE_DATA_KEY = meta_to_type_data }
 		lua_pushboolean(L, 1);	// ..., M, cachestack, true
 		lua_rawset(L, LUA_REGISTRYINDEX);	// ..., M; registry = { ..., NewType, [cachestack] = true }
 
