@@ -6,8 +6,7 @@ _very_ much a work in progress, though the (incomplete) [docs](https://ggcrunchy
 give some idea of the direction it's taking. Many solvers are mostly fleshed out, with views, block expressions,
 and the like being still underway.
 
-Currently I've only tackled Windows. This project is meant first and foremost to be a [Corona SDK](https://coronalabs.com)
-plugin, however, so several more platforms should be forthcoming.
+So far I've tested it on Windows. It also seems to build on Mac and Android, though I've not yet tried these. This project is meant first and foremost to be a [Corona SDK](https://coronalabs.com) plugin, however, so iOS and tvOS should follow as well.
 
 That said, with a little effort the relevant bits could be carved out of the support submodules and retargeted
 at other platforms.
