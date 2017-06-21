@@ -36,11 +36,11 @@ template<typename ScalarOp> struct ScalarOpName;
 #define SCALAR_TYPE_NAME(OP)	template<typename S> struct ScalarOpName<Eigen::internal::scalar_##OP##_op<S>> {	\
 									ScalarOpName (luaL_Buffer * B, lua_State * L)									\
 									{																				\
-										luaL_addstring(L, "scalar_" #OP "_op<");									\
+										OpenType(B, "scalar_" #OP "_op");                                           \
 																													\
 										AuxTypeName<S>(B, L);														\
 																													\
-										luaL_addstring(B, ">");														\
+										CloseType(B);                                                               \
 									}																				\
 								}
 
@@ -53,7 +53,7 @@ SCALAR_TYPE_NAME(real_ref);
 template<typename U, typename V> struct AuxTypeName<Eigen::CwiseUnaryOp<U, V>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_addstring(B, "CwiseUnaryOp<");
+		OpenType(B, "CwiseUnaryOp");
 
 		ScalarOpName<U> son{B, L};
 
@@ -61,7 +61,7 @@ template<typename U, typename V> struct AuxTypeName<Eigen::CwiseUnaryOp<U, V>> {
 
 		AuxTypeName<V>(B, L);
 
-		luaL_addstring(B, ">");
+		CloseType(B);
 	}
 };
 

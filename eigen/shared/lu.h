@@ -27,6 +27,8 @@
 
 //
 template<typename U, typename R> struct LUMethodsBase : SolverMethodsBase<U, R> {
+    using Getters = InstanceGetters<U, R>;
+
 	LUMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -56,6 +58,8 @@ template<typename U, typename R> struct LUMethodsBase : SolverMethodsBase<U, R> 
 * FullPivLU methods *
 ********************/
 template<typename U, typename R> struct AttachMethods<Eigen::FullPivLU<U>, R> : LUMethodsBase<Eigen::FullPivLU<U>, R> {
+    using Getters = InstanceGetters<Eigen::FullPivLU<U>, R>;
+
 	AttachMethods (lua_State * L) : LUMethodsBase<Eigen::FullPivLU<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
@@ -64,7 +68,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivLU<U>, R> : 
 			}, {
 				"image", [](lua_State * L)
 				{
-					return NewRet<R>(L, GetT(L)->image(GetR(L, 2)));
+                    return NewRet<R>(L, Getters::GetT(L)->image(Getters::GetR(L, 2)));
 				}
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(kernel)
@@ -76,7 +80,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivLU<U>, R> : 
 
 		luaL_register(L, nullptr, methods);
 
-		QRExtensions(L);
+        LUMethodsBase<Eigen::FullPivLU<U>, R>::template QRExtensions(L);
 	}
 };
 

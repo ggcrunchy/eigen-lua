@@ -29,41 +29,51 @@
 #include "utils.h"
 #include "macros.h"
 
+// Version of methods when we have a matrix or basic map.
+template<typename T, typename R, bool = HasNormalStride<T>::value> struct AddIfNormalStride {
+    using Getters = InstanceGetters<T, R>;
+    
+    AddIfNormalStride (lua_State * L)
+    {
+        luaL_Reg methods[] = {
+            {
+                EIGEN_MATRIX_GET_MATRIX_METHOD(asPermutation)
+            },
+            { nullptr, nullptr }
+        };
+    
+        luaL_register(L, nullptr, methods);
+    }
+};
+
+// Version of methods with maps having non-trivial stride.
+template<typename T, typename R> struct AddIfNormalStride<T, R, false> {
+    AddIfNormalStride (lua_State * L)
+    {
+        luaL_Reg methods[] = {
+            {
+                "asPermutation", [](lua_State * L)
+                {
+                    R temp = *InstanceGetters<T, R>::GetT(L);
+                
+                    return NewRet<R>(L, temp.asPermutation());
+                }
+            },
+            { nullptr, nullptr }
+        };
+    
+        luaL_register(L, nullptr, methods);
+    }
+};
+
 // Methods assigned when the underlying type is real.
-template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsComplex> struct RealOps : InstanceGetters<T, R> {
-	// Version of methods when we have a matrix or basic map.
-	template<bool = HasNormalStride<T>::value> void AddIfNormalStride (lua_State * L)
+template<typename T, typename R, bool = !Eigen::NumTraits<typename T::Scalar>::IsComplex> struct RealOps {
+    using Getters = InstanceGetters<T, R>;
+    
+    RealOps (lua_State * L)
 	{
-		luaL_Reg methods[] = {
-			{
-				EIGEN_MATRIX_GET_MATRIX_METHOD(asPermutation)
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
-
-	// Version of methods with maps having non-trivial stride.
-	template<> void AddIfNormalStride<false> (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"asPermutation", [](lua_State * L)
-				{
-					R temp = *GetT(L);
-
-					return NewRet<R>(L, temp.asPermutation());
-				}
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
-		
-	RealOps (lua_State * L)
-	{
+        typedef typename Getters::ArrayType ArrayType; // Visual Studio workaround
+        
 		luaL_Reg methods[] = {
 			{
 				EIGEN_ARRAY_METHOD(ceil)
@@ -93,7 +103,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsComplex>
 
 		luaL_register(L, nullptr, methods);
 
-		AddIfNormalStride(L);
+        AddIfNormalStride<T, R> ains{L};
 	}
 };
 

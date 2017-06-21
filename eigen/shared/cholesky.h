@@ -27,6 +27,9 @@
 
 // Common Cholesky methods body.
 template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<U, R> {
+    using Getters = InstanceGetters<U, R>;
+	using Real = typename Eigen::NumTraits<typename R::Scalar>::Real;
+
 	CholeskyMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -36,15 +39,15 @@ template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<
 					return SelfForChaining(L); // already self-adjoint
 				}
 			}, {
-				"info", Info<>
+                "info", SolverMethodsBase<U, R>::template Info<>
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixL)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixU)
 			}, {
 				"rankUpdate", [](lua_State * L)
-				{
-					GetT(L)->rankUpdate(*ColumnVector<R>{L, 2}, LuaXS::GetArg<Real>(L, 3));
+				{   
+                    Getters::GetT(L)->rankUpdate(*ColumnVector<R>{L, 2}, LuaXS::GetArg<Real>(L, 3));
 
 					return SelfForChaining(L);
 				}
@@ -66,6 +69,8 @@ template<typename U, typename R> struct CholeskyMethodsBase : SolverMethodsBase<
 * LDLT methods *
 ***************/
 template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LDLT<U, UpLo>, R> : CholeskyMethodsBase<Eigen::LDLT<U, UpLo>, R> {
+    using Getters = InstanceGetters<Eigen::LDLT<U, UpLo>, R>;
+
 	AttachMethods (lua_State * L) : CholeskyMethodsBase<Eigen::LDLT<U, UpLo>, R>(L)
 	{
 		luaL_Reg methods[] = {
@@ -84,7 +89,7 @@ template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LDLT<U, U
 
 					luaL_argcheck(L, td, 2, "transpositionsP() requires int matrices");
 
-					Eigen::MatrixXi im = GetT(L)->transpositionsP().indices();
+                    Eigen::MatrixXi im = Getters::GetT(L)->transpositionsP().indices();
 
 					PUSH_TYPED_DATA(im);
 				}
@@ -104,6 +109,8 @@ SOLVER_TYPE_NAME_EX(LDLT);
 * LLT methods *
 **************/
 template<typename U, typename R, int UpLo> struct AttachMethods<Eigen::LLT<U, UpLo>, R> : CholeskyMethodsBase<Eigen::LLT<U, UpLo>, R> {
+    using Getters = InstanceGetters<Eigen::LLT<U, UpLo>, R>;
+
 	AttachMethods (lua_State * L) : CholeskyMethodsBase<Eigen::LLT<U, UpLo>, R>(L)
 	{
 		luaL_Reg methods[] = {

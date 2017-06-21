@@ -33,143 +33,190 @@ template<typename U, unsigned int UpLo> struct Transposer<Eigen::TriangularView<
 	}
 };
 
+namespace details_tv {
+    //
+    template<typename TV, typename, int ModeAnded = TV::Mode & (Eigen::Lower | Eigen::Upper)> struct GetSelfAdjointView {
+        static int Do (lua_State * L)
+        {
+            return luaL_error(L, "Only upper or lower triangular views may yield self-adjoint views");
+        }
+    };
+
+    template<typename TV, typename R> struct GetSelfAdjointView<TV, R, 0> {
+        using Getters = InstanceGetters<TV, R>;
+        
+        static int Do (lua_State * L)
+        {
+            NEW_REF1_DECLTYPE("sav_viewed_from", Getters::GetT(L)->selfadjointView());
+        }
+    };
+
+    //
+    template<typename MT, unsigned int UpLo, typename R, bool = Eigen::NumTraits<typename R::Scalar>::IsComplex> struct AddNonComplex {
+        using Getters = InstanceGetters<Eigen::TriangularView<MT, UpLo>, R>;
+        
+        AddNonComplex (lua_State * L)
+        {
+            luaL_Reg methods[] = {
+                {
+                    EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
+                }, {
+                    EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
+                },
+                { nullptr, nullptr }
+            };
+            
+            luaL_register(L, nullptr, methods);
+        }
+    };
+    
+    template<typename MT, unsigned int UpLo, typename R> struct AddNonComplex<MT, UpLo, R, true> {
+        AddNonComplex (lua_State *) {}
+    };
+    
+    //
+    template<typename MT, unsigned int UpLo, typename R, bool = Eigen::NumTraits<typename R::Scalar>::IsInteger> struct AddNonInt {
+        using Getters = InstanceGetters<Eigen::TriangularView<MT, UpLo>, R>;
+
+        AddNonInt (lua_State * L)
+        {
+            luaL_Reg methods[] = {
+                {
+                    "solve", [](lua_State * L)
+                    {
+                        if (WantsBool(L, "OnTheRight")) return NewRet<R>(L, Getters::GetT(L)->template solve<Eigen::OnTheRight>(Getters::GetR(L, 2)));
+                        else return NewRet<R>(L, Getters::GetT(L)->solve(Getters::GetR(L, 2)));
+                    }
+                }, {
+                    "solveInPlace", [](lua_State * L) // todo: stumped here with TV<Transpose<Map<Matrix, 0, InnerStride>>,9>
+                    {
+                        if (WantsBool(L, "OnTheRight")) Getters::GetT(L)->template solveInPlace<Eigen::OnTheRight>(Getters::GetR(L, 2));
+                        else Getters::GetT(L)->solveInPlace(Getters::GetR(L, 2));
+                        // TODO: of course, GetR() isn't "in place"... reassign it?
+                
+                        return 0;
+                    }
+                },
+                { nullptr, nullptr }
+            };
+    
+            luaL_register(L, nullptr, methods);
+        }
+    };
+
+    template<typename MT, unsigned int UpLo, typename R> struct AddNonInt<MT, UpLo, R, true> {
+        AddNonInt (lua_State *) {}
+    };
+
+    //
+    template<typename MT, unsigned int UpLo, typename R, bool = IsLvalue<MT>::value> struct AddLvalueOps {
+        using Getters = InstanceGetters<Eigen::TriangularView<MT, UpLo>, R>;
+
+        AddLvalueOps (lua_State * L)
+        {
+            luaL_Reg methods[] = {
+                {
+                    EIGEN_PUSH_AUTO_RESULT_METHOD(adjoint)
+                }, {
+                    EIGEN_PUSH_AUTO_RESULT_METHOD(conjugate)
+                }, {
+                    EIGEN_MATRIX_SET_SCALAR_METHOD(fill)
+                }, {
+                    EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(setConstant)
+                }, {
+                    EIGEN_MATRIX_CHAIN_METHOD(setOnes)
+                }, {
+                    EIGEN_MATRIX_CHAIN_METHOD(setZero)
+                }, {
+                    "transpose", Transposer<Eigen::TriangularView<MT, UpLo>>::Do
+                },
+                { nullptr, nullptr }
+            };
+    
+            luaL_register(L, nullptr, methods);
+    //"assign" (matrix or another TV...)
+    /*
+     367     template<typename Other>
+     368     EIGEN_DEVICE_FUNC
+     369     TriangularViewType&  operator+=(const DenseBase<Other>& other) {
+     370       internal::call_assignment_no_alias(derived(), other.derived(), internal::add_assign_op<Scalar,typename Other::Scalar>());
+     371       return derived();
+     372     }
+     374     template<typename Other>
+     375     EIGEN_DEVICE_FUNC
+     376     TriangularViewType&  operator-=(const DenseBase<Other>& other) {
+     377       internal::call_assignment_no_alias(derived(), other.derived(), internal::sub_assign_op<Scalar,typename Other::Scalar>());
+     378       return derived();
+     379     }
+     380
+     382     EIGEN_DEVICE_FUNC
+     383     TriangularViewType&  operator*=(const typename internal::traits<MatrixType>::Scalar& other) { return *this = derived().nestedExpression() * other; }
+     385     EIGEN_DEVICE_FUNC
+     386     TriangularViewType&  operator/=(const typename internal::traits<MatrixType>::Scalar& other) { return *this = derived().nestedExpression() / other; }
+     
+     424     template<typename OtherDerived>
+     425     EIGEN_DEVICE_FUNC
+     426     TriangularViewType& operator=(const TriangularBase<OtherDerived>& other);
+     427
+     429     template<typename OtherDerived>
+     430     EIGEN_DEVICE_FUNC
+     431     TriangularViewType& operator=(const MatrixBase<OtherDerived>& other);
+     448
+     514     template<typename OtherDerived>
+     515     EIGEN_DEVICE_FUNC
+     516 #ifdef EIGEN_PARSED_BY_DOXYGEN
+     517     void swap(TriangularBase<OtherDerived> &other)
+     518 #else
+     519     void swap(TriangularBase<OtherDerived> const & other)
+     520 #endif
+     521     {
+     522       EIGEN_STATIC_ASSERT_LVALUE(OtherDerived);
+     523       call_assignment(derived(), other.const_cast_derived(), internal::swap_assign_op<Scalar>());
+     524     }
+     525
+     528     template<typename OtherDerived>
+     529     EIGEN_DEVICE_FUNC
+     530     void swap(MatrixBase<OtherDerived> const & other)
+     531     {
+     532       EIGEN_STATIC_ASSERT_LVALUE(OtherDerived);
+     533       call_assignment(derived(), other.const_cast_derived(), internal::swap_assign_op<Scalar>());
+     534     }
+     */
+        }
+    };
+    
+    template<typename MT, unsigned int UpLo, typename R> struct AddLvalueOps<MT, UpLo, R, false> {
+        using Getters = InstanceGetters<Eigen::TriangularView<MT, UpLo>, R>;
+
+        AddLvalueOps (lua_State * L)
+        {
+            #define RVALUE_TRIANGULAR_VIEW(METHOD)	const Eigen::TriangularView<MT, UpLo> * tv = Getters::GetT(L);              \
+                                                    R * mat = New<R>(L, tv->METHOD());                                          \
+                                                                                                                                \
+                                                    NEW_REF1_DECLTYPE("tv_viewed_from", mat->template triangularView<UpLo>())
+            #define RVALUE_TRIANGULAR_VIEW_METHOD(NAME) EIGEN_REG(NAME, RVALUE_TRIANGULAR_VIEW(NAME))
+    
+            luaL_Reg methods[] = {
+                {
+                    RVALUE_TRIANGULAR_VIEW_METHOD(adjoint)
+                }, {
+                    RVALUE_TRIANGULAR_VIEW_METHOD(conjugate)
+                }, {
+                    RVALUE_TRIANGULAR_VIEW_METHOD(transpose)
+                },
+                { nullptr, nullptr }
+            };
+    
+            luaL_register(L, nullptr, methods);
+        }
+    };
+};
+
 /*************************
 * TriangularView methods *
 *************************/
-template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::TriangularView<MT, UpLo>, R> : InstanceGetters<Eigen::TriangularView<MT, UpLo>, R> {
-	//
-	template<int ModeAnded> static int GetSelfAdjointView (lua_State * L)
-	{
-		return luaL_error(L, "Only upper or lower triangular views may yield self-adjoint views");
-	}
-
-	template<> static int GetSelfAdjointView<0> (lua_State * L)
-	{
-		NEW_REF1_DECLTYPE("sav_viewed_from", GetT(L)->selfadjointView());
-	}
-
-	//
-	template<bool = Eigen::NumTraits<R::Scalar>::IsInteger> void AddNonInt (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"solve", [](lua_State * L)
-				{
-					if (WantsBool(L, "OnTheRight")) return NewRet<R>(L, GetT(L)->solve<Eigen::OnTheRight>(GetR(L, 2)));
-					else return NewRet<R>(L, GetT(L)->solve(GetR(L, 2)));
-				}
-			}, {
-				"solveInPlace", [](lua_State * L) // todo: stumped here with TV<Transpose<Map<Matrix, 0, InnerStride>>,9>
-				{
-					if (WantsBool(L, "OnTheRight")) GetT(L)->solveInPlace<Eigen::OnTheRight>(GetR(L, 2));
-					else GetT(L)->solveInPlace(GetR(L, 2));
-					// TODO: of course, GetR() isn't "in place"... reassign it?
-
-					return 0;
-				}
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
-
-	template<> void AddNonInt<true> (lua_State *) {}
-
-	//
-	template<bool = IsLvalue<MT>::value> void AddLvalueOps (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				EIGEN_PUSH_AUTO_RESULT_METHOD(adjoint)
-			}, {
-				EIGEN_PUSH_AUTO_RESULT_METHOD(conjugate)
-			}, {
-				EIGEN_MATRIX_SET_SCALAR_METHOD(fill)
-			}, {
-				EIGEN_MATRIX_SET_SCALAR_CHAIN_METHOD(setConstant)
-			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setOnes)
-			}, {
-				EIGEN_MATRIX_CHAIN_METHOD(setZero)
-			}, {
-				"transpose", Transposer<Eigen::TriangularView<MT, UpLo>>::Do
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-		//"assign" (matrix or another TV...)
-		/*
-		367     template<typename Other>
-		368     EIGEN_DEVICE_FUNC
-		369     TriangularViewType&  operator+=(const DenseBase<Other>& other) {
-		370       internal::call_assignment_no_alias(derived(), other.derived(), internal::add_assign_op<Scalar,typename Other::Scalar>());
-		371       return derived();
-		372     }
-		374     template<typename Other>
-		375     EIGEN_DEVICE_FUNC
-		376     TriangularViewType&  operator-=(const DenseBase<Other>& other) {
-		377       internal::call_assignment_no_alias(derived(), other.derived(), internal::sub_assign_op<Scalar,typename Other::Scalar>());
-		378       return derived();
-		379     }
-		380
-		382     EIGEN_DEVICE_FUNC
-		383     TriangularViewType&  operator*=(const typename internal::traits<MatrixType>::Scalar& other) { return *this = derived().nestedExpression() * other; }
-		385     EIGEN_DEVICE_FUNC
-		386     TriangularViewType&  operator/=(const typename internal::traits<MatrixType>::Scalar& other) { return *this = derived().nestedExpression() / other; }
-
-		424     template<typename OtherDerived>
-		425     EIGEN_DEVICE_FUNC
-		426     TriangularViewType& operator=(const TriangularBase<OtherDerived>& other);
-		427
-		429     template<typename OtherDerived>
-		430     EIGEN_DEVICE_FUNC
-		431     TriangularViewType& operator=(const MatrixBase<OtherDerived>& other);
-		448
-		514     template<typename OtherDerived>
-		515     EIGEN_DEVICE_FUNC
-		516 #ifdef EIGEN_PARSED_BY_DOXYGEN
-		517     void swap(TriangularBase<OtherDerived> &other)
-		518 #else
-		519     void swap(TriangularBase<OtherDerived> const & other)
-		520 #endif
-		521     {
-		522       EIGEN_STATIC_ASSERT_LVALUE(OtherDerived);
-		523       call_assignment(derived(), other.const_cast_derived(), internal::swap_assign_op<Scalar>());
-		524     }
-		525
-		528     template<typename OtherDerived>
-		529     EIGEN_DEVICE_FUNC
-		530     void swap(MatrixBase<OtherDerived> const & other)
-		531     {
-		532       EIGEN_STATIC_ASSERT_LVALUE(OtherDerived);
-		533       call_assignment(derived(), other.const_cast_derived(), internal::swap_assign_op<Scalar>());
-		534     }
-		*/
-	};
-
-	template<> void AddLvalueOps<false> (lua_State * L)
-	{
-		#define RVALUE_TRIANGULAR_VIEW(METHOD)	const Eigen::TriangularView<MT, UpLo> * tv = GetT(L);				\
-												R * mat = New<R>(L, tv->METHOD());									\
-																													\
-												NEW_REF1_DECLTYPE("tv_viewed_from", mat->triangularView<UpLo>())
-		#define RVALUE_TRIANGULAR_VIEW_METHOD(NAME) EIGEN_REG(NAME, RVALUE_TRIANGULAR_VIEW(NAME))
-
-		luaL_Reg methods[] = {
-			{
-				RVALUE_TRIANGULAR_VIEW_METHOD(adjoint)
-			}, {
-				RVALUE_TRIANGULAR_VIEW_METHOD(conjugate)
-			}, {
-				RVALUE_TRIANGULAR_VIEW_METHOD(transpose)
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
+template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen::TriangularView<MT, UpLo>, R> {
+    using Getters = InstanceGetters<Eigen::TriangularView<MT, UpLo>, R>;
 
 	//
 	AttachMethods (lua_State * L)
@@ -184,20 +231,16 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(determinant)
 			}, {
-			   EIGEN_MATRIX_PUSH_VALUE_METHOD(innerStride)
-			}, {
 				"__mul", [](lua_State * L)
 				{
 					return 1;	// TODO
 				}
 			}, {
-			   EIGEN_MATRIX_PUSH_VALUE_METHOD(outerStride)
-			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rows)
 			}, {
 				"selfadjointView", [](lua_State * L)
 				{
-					return GetSelfAdjointView<Eigen::TriangularView<MT, UpLo>::Mode & (Eigen::Lower | Eigen::Upper)>(L);
+                    return details_tv::GetSelfAdjointView<Eigen::TriangularView<MT, UpLo>, R>::Do(L);
 				}
 			}, 
 			{ nullptr, nullptr }
@@ -223,15 +266,16 @@ template<typename MT, unsigned int UpLo, typename R> struct AttachMethods<Eigen:
 		*/
 		luaL_register(L, nullptr, methods);
 
-		AddLvalueOps(L);
-		AddNonInt(L);
+        details_tv::AddLvalueOps<MT, UpLo, R> alo{L};
+        details_tv::AddNonComplex<MT, UpLo, R> anc{L};
+        details_tv::AddNonInt<MT, UpLo, R> ani{L};
 	}
 };
 
 template<typename U, unsigned int E> struct AuxTypeName<Eigen::TriangularView<U, E>> {
 	AuxTypeName (luaL_Buffer * B, lua_State * L)
 	{
-		luaL_addstring(B, "TriangularView<");
+		OpenType(B, "TriangularView");
 
 		AuxTypeName<U>(B, L);
 

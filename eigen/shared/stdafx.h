@@ -49,3 +49,7 @@ static ThreadXS::TLS<lua_State *> tls_LuaState;
 
 // ...and Eigen itself.
 #include <Eigen/Eigen>
+
+// Forward declarations.
+template<typename R, bool bSetTemp = false> R * SetTemp (lua_State * L, R * temp, int arg, bool bMissingOK = false);
+template<typename R, typename MM, typename MS, typename SM> R WithMatrixScalarCombination (lua_State * L, MM && both, MS && mat_scalar, SM && scalar_mat, int arg1 = 1, int arg2 = 2);

@@ -27,7 +27,7 @@
 #include "macros.h"
 
 //
-#define NEW_XPR(METHOD, ...)	XprSource<> xprs{L};											\
+#define NEW_XPR(METHOD, ...)	XprSource<T, R> xprs{L};										\
 																								\
 								NEW_REF1_DECLTYPE("xpr_from", xprs.mPtr->METHOD(__VA_ARGS__))
 
@@ -100,27 +100,26 @@ template<typename T> static ColumnVector<T> & GetVectorFromRing (lua_State * L)
 #define EIGEN_OBJECT_GET_XPR_INDEX_PAIR_METHOD(NAME) EIGEN_REG(NAME, EIGEN_OBJECT_GET_XPR_INDEX_PAIR(NAME))
 
 //
-template<typename T, typename R> struct XprOps : InstanceGetters<T, R> {
-	//
-	template<bool = IsBasic<T>::value> struct XprSource {
-		T * mPtr;
+template<typename T, typename R, bool = IsBasic<T>::value> struct XprSource {
+    T * mPtr;
+    
+    XprSource (lua_State * L) : mPtr{InstanceGetters<T, R>::GetT(L)}
+    {
+    }
+};
 
-		XprSource (lua_State * L) : mPtr{GetT(L)}
-		{
-		}
-	};
-
-	template<> struct XprSource<false> {
-		R * mPtr;
-
-		XprSource (lua_State * L)
-		{
-			mPtr = New<R>(L, *GetT(L));	// xpr, ..., new_mat
-
-			lua_replace(L, 1);	// new_mat, ...
-		}
-	};
-
+template<typename T, typename R> struct XprSource<T, R, false> {
+    R * mPtr;
+    
+    XprSource (lua_State * L)
+    {
+        mPtr = New<R>(L, *InstanceGetters<T, R>::GetT(L));// xpr, ..., new_mat
+        
+        lua_replace(L, 1);	// new_mat, ...
+    }
+};
+//
+template<typename T, typename R> struct XprOps {
 	XprOps (lua_State * L)
 	{
 		luaL_Reg methods[] = {

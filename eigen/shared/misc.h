@@ -27,19 +27,21 @@
 
 //
 template<typename U, typename R> struct SchurMethodsBase : SolverMethodsBase<U, R> {
+    using Getters = InstanceGetters<U, R>;
+
 	SchurMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(getMaxIterations)
 			}, {
-				"info", Info<>
+                "info", SolverMethodsBase<U, R>::template Info<>
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixT)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixU)
 			}, {
-				"setMaxIterations", SetMaxIterations<>
+                "setMaxIterations", SolverMethodsBase<U, R>::template SetMaxIterations<>
 			},
 			{ nullptr, nullptr }
 		};
@@ -72,31 +74,37 @@ SOLVER_TYPE_NAME(RealSchur);
 
 /**********************************
 * HessenburgDecomposition methods *
-**********************************/
+ **********************************/
+
+//
+template<typename T, typename R, bool = Eigen::NumTraits<typename R::Scalar>::IsComplex> struct MakeSchur {
+    static int Do (lua_State * L)
+    {
+        T & hd = *InstanceGetters<T, R>::GetT(L);
+        Eigen::ComplexSchur<R> schur;
+    
+        schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "NoU"));
+    
+        return NewRet<Eigen::ComplexSchur<R>>(L, std::move(schur));
+    }
+};
+
+//
+template<typename T, typename R> struct MakeSchur<T, R, false> {
+    static int Do (lua_State * L)
+    {
+        auto & hd = *InstanceGetters<T, R>::GetT(L);
+        Eigen::RealSchur<R> schur;
+    
+        schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "NoU"));
+    
+        return NewRet<Eigen::RealSchur<R>>(L, std::move(schur));
+    }
+};
+
 template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposition<U>, R> : SolverMethodsBase<Eigen::HessenbergDecomposition<U>, R> {
 	using T = Eigen::HessenbergDecomposition<U>;
-
-	//
-	template<bool = Eigen::NumTraits<R::Scalar>::IsComplex> static int MakeSchur (lua_State * L)
-	{
-		T & hd = *GetInstance<T>(L);
-		Eigen::ComplexSchur<R> schur;
-
-		schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "NoU"));
-
-		return NewRet<Eigen::ComplexSchur<R>>(L, std::move(schur));
-	}
-
-	//
-	template<> static int MakeSchur<false> (lua_State * L)
-	{
-		auto & hd = *GetT(L);
-		Eigen::RealSchur<R> schur;
-
-		schur.computeFromHessenberg(hd.matrixH(), hd.matrixQ(), !WantsBool(L, "NoU"));
-
-		return NewRet<Eigen::RealSchur<R>>(L, std::move(schur));
-	}
+    using Getters = InstanceGetters<T, R>;
 
 	AttachMethods (lua_State * L)
 	{
@@ -110,7 +118,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::HessenbergDecomposi
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(packedMatrix)
 			}, {
-				"schur", MakeSchur<>
+                "schur", MakeSchur<T, R>::Do
 			},
 			{ nullptr, nullptr }
 		};
@@ -125,11 +133,13 @@ SOLVER_TYPE_NAME(HessenbergDecomposition);
 * RealQZ methods *
 *****************/
 template<typename U, typename R> struct AttachMethods<Eigen::RealQZ<U>, R> : SolverMethodsBase<Eigen::RealQZ<U>, R> {
+    using Getters = InstanceGetters<Eigen::RealQZ<U>, R>;
+
 	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
-				"info", Info<>
+                "info", SolverMethodsBase<Eigen::RealQZ<U>, R>::template Info<>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(iterations)
 			}, {
@@ -141,7 +151,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::RealQZ<U>, R> : Sol
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixZ)
 			}, {
-				"setMaxIterations", SetMaxIterations<>
+                "setMaxIterations", SolverMethodsBase<Eigen::RealQZ<U>, R>::template SetMaxIterations<>
 			},
 			{ nullptr, nullptr }
 		};
@@ -156,6 +166,8 @@ SOLVER_TYPE_NAME(RealQZ);
 * Tridiagonalization methods *
 *****************************/
 template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<U>, R> : SolverMethodsBase<Eigen::Tridiagonalization<U>, R> {
+    using Getters = InstanceGetters<Eigen::Tridiagonalization<U>, R>;
+
 	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -164,7 +176,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<
 			}, {
 				"generalizedSelfAdjointEigenSolver", [](lua_State * L)
 				{
-					auto & tri = *GetT(L);
+                    auto & tri = *Getters::GetT(L);
 					Eigen::GeneralizedSelfAdjointEigenSolver<R> gsaes;
 
 					gsaes.computeFromTridiagonal(tri.diagonal(), tri.subDiagonal(), WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors);
@@ -182,7 +194,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::Tridiagonalization<
 			}, {
 				"selfAdjointEigenSolver", [](lua_State * L)
 				{
-					auto & tri = *GetT(L);
+                    auto & tri = *Getters::GetT(L);
 					Eigen::SelfAdjointEigenSolver<R> saes;
 
 					saes.computeFromTridiagonal(tri.diagonal(), tri.subDiagonal(), WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors);

@@ -29,6 +29,8 @@
 * ComplexEigenSolver methods *
 *****************************/
 template<typename T, typename R> struct AttachMethods<Eigen::ComplexEigenSolver<T>, R> : SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R> {
+    using Getters = InstanceGetters<Eigen::ComplexEigenSolver<T>, R>;
+
 	AttachMethods (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -39,9 +41,9 @@ template<typename T, typename R> struct AttachMethods<Eigen::ComplexEigenSolver<
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(getMaxIterations)
 			}, {
-				"info", Info<>
+                "info", SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R>::template Info<>
 			}, {
-				"setMaxIterations", SetMaxIterations<>
+				"setMaxIterations", SolverMethodsBase<Eigen::ComplexEigenSolver<T>, R>::template SetMaxIterations<>
 			},
 			{ nullptr, nullptr }
 		};
@@ -56,7 +58,9 @@ SOLVER_TYPE_NAME(ComplexEigenSolver);
 * EigenSolver methods *
 **********************/
 template<typename T, typename R> struct AttachMethods<Eigen::EigenSolver<T>, R> : SolverMethodsBase<Eigen::EigenSolver<T>, R> {
-	AttachMethods (lua_State * L)
+    using Getters = InstanceGetters<Eigen::EigenSolver<T>, R>;
+    
+    AttachMethods (lua_State * L)
 	{
 		USING_COMPLEX_TYPE();
 
@@ -68,13 +72,13 @@ template<typename T, typename R> struct AttachMethods<Eigen::EigenSolver<T>, R> 
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(getMaxIterations)
 			}, {
-				"info", Info<>
+				"info", SolverMethodsBase<Eigen::EigenSolver<T>, R>::template Info<>
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(pseudoEigenvalueMatrix)
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(pseudoEigenvectors)
 			}, {
-				"setMaxIterations", SetMaxIterations<>
+				"setMaxIterations", SolverMethodsBase<Eigen::EigenSolver<T>, R>::template SetMaxIterations<>
 			},
 			{ nullptr, nullptr }
 		};
@@ -89,7 +93,9 @@ SOLVER_TYPE_NAME(EigenSolver);
 * GeneralizedEigenSolver methods *
 *********************************/
 template<typename T, typename R> struct AttachMethods<Eigen::GeneralizedEigenSolver<T>, R> : SolverMethodsBase<Eigen::GeneralizedEigenSolver<T>, R> {
-	AttachMethods (lua_State * L)
+    using Getters = InstanceGetters<Eigen::GeneralizedEigenSolver<T>, R>;
+    
+    AttachMethods (lua_State * L)
 	{
 		USING_COMPLEX_TYPE();
 
@@ -103,7 +109,7 @@ template<typename T, typename R> struct AttachMethods<Eigen::GeneralizedEigenSol
 			}, {
 				EIGEN_REAL_GET_COMPLEX_METHOD(eigenvectors)
 			}, {
-				"setMaxIterations", SetMaxIterations<>
+                "setMaxIterations", SolverMethodsBase<Eigen::GeneralizedEigenSolver<T>, R>::template SetMaxIterations<>
 			},
 			{ nullptr, nullptr }
 		};
@@ -116,7 +122,9 @@ SOLVER_TYPE_NAME(GeneralizedEigenSolver);
 
 //
 template<typename T, typename R> struct SelfAdjointEigensolverMethodsBase : SolverMethodsBase<T, R> {
-	SelfAdjointEigensolverMethodsBase (lua_State * L)
+    using Getters = InstanceGetters<T, R>;
+    
+    SelfAdjointEigensolverMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
 			{
@@ -124,7 +132,7 @@ template<typename T, typename R> struct SelfAdjointEigensolverMethodsBase : Solv
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(eigenvectors)
 			}, {
-				"info", Info<>
+                "info", SolverMethodsBase<T, R>::template Info<>
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(operatorInverseSqrt)
 			}, {

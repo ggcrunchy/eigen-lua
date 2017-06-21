@@ -53,14 +53,13 @@
 									}
 
 //
-template<typename T, typename R> struct SolverMethodsBase : InstanceGetters<T, R> {
-	//
-	using Real = typename Eigen::NumTraits<typename R::Scalar>::Real;
-
+template<typename T, typename R> struct SolverMethodsBase {
+    using Getters = InstanceGetters<T, R>;
+    
 	//
 	template<bool = true> static int Info (lua_State * L) // dummy template parameter as poor man's enable_if
 	{
-		switch (GetT(L)->info())
+        switch (Getters::GetT(L)->info())
 		{
 		case Eigen::Success:
 			lua_pushliteral(L, "Success");	// ..., "Success"
@@ -78,7 +77,7 @@ template<typename T, typename R> struct SolverMethodsBase : InstanceGetters<T, R
 	//
 	template<bool = true> static int SetMaxIterations (lua_State * L)
 	{
-		GetT(L)->setMaxIterations(LuaXS::Int(L, 2));
+        Getters::GetT(L)->setMaxIterations(LuaXS::Int(L, 2));
 
 		return SelfForChaining(L);	// solver, count, solver
 	}
@@ -89,9 +88,9 @@ template<typename T, typename R> struct SolverMethodsBase : InstanceGetters<T, R
 		lua_settop(L, 2);	// solver, ..., how
 		lua_pushliteral(L, "Default");	// solver, ..., how, "Default"
 
-		if (!lua_equal(L, 2, 3)) GetT(L)->setThreshold(LuaXS::GetArg<Real>(L, 2));
+        if (!lua_equal(L, 2, 3)) Getters::GetT(L)->setThreshold(LuaXS::GetArg<typename Eigen::NumTraits<typename R::Scalar>::Real>(L, 2));
 
-		else GetT(L)->setThreshold(Eigen::Default_t{});
+        else Getters::GetT(L)->setThreshold(Eigen::Default_t{});
 
 		return SelfForChaining(L);	// solver, ..., how, "Default", solver
 	}

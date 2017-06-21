@@ -30,7 +30,7 @@
 #include "xpr_ops.h"
 
 //
-template<typename T, typename R> struct AttachBlockMethods : InstanceGetters<T, R> {
+template<typename T, typename R> struct AttachBlockMethods {
 	//
 	AttachBlockMethods (lua_State * L)
 	{
@@ -48,7 +48,7 @@ template<typename T, typename R> struct AttachBlockMethods : InstanceGetters<T, 
 				{
 					AsMatrix<T, R>(L);	// xpr, mat
 
-					return Print(L, GetR(L, 2));
+                    return Print(L, InstanceGetters<T, R>::GetR(L, 2));
 				}
 			},
 			{ nullptr, nullptr }

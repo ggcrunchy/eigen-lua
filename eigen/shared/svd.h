@@ -27,6 +27,8 @@
 
 //
 template<typename U, typename R> struct SVDMethodsBase : SolverMethodsBase<U, R> {
+    using Getters = InstanceGetters<U, R>;
+
 	SVDMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -43,7 +45,7 @@ template<typename U, typename R> struct SVDMethodsBase : SolverMethodsBase<U, R>
 			}, {
 				EIGEN_MATRIX_PUSH_VALUE_METHOD(rank)
 			}, {
-				"setThreshold", SetThreshold<>
+                "setThreshold", SolverMethodsBase<U, R>::template SetThreshold<>
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(singularValues)
 			}, {

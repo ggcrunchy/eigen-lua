@@ -29,27 +29,31 @@
 #include "matrix.h"
 
 // Add LinSpaced*() for non-boolean matrices.
-template<typename M> static void AddLinSpaced (lua_State * L)
-{
-	luaL_Reg methods[] = {
-		{
-			"LinSpaced", [](lua_State * L)
-			{
-				return NewRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Make(L, LuaXS::Int(L, 1)));
-			}
-		}, {
-			"LinSpacedRow", [](lua_State * L)
-			{
-				return NewRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Make(L, LuaXS::Int(L, 1)));
-			}
-		},
-		{ nullptr, nullptr }
-	};
+template<typename M> struct AddLinSpaced {
+    AddLinSpaced (lua_State * L)
+    {
+        luaL_Reg methods[] = {
+            {
+                "LinSpaced", [](lua_State * L)
+                {
+                    return NewRet<M>(L, LinSpacing<M, Eigen::Dynamic, 1>::Make(L, LuaXS::Int(L, 1)));
+                }
+            }, {
+                "LinSpacedRow", [](lua_State * L)
+                {
+                    return NewRet<M>(L, LinSpacing<M, 1, Eigen::Dynamic>::Make(L, LuaXS::Int(L, 1)));
+                }
+            },
+            { nullptr, nullptr }
+        };
 
-	luaL_register(L, nullptr, methods);
-}
+        luaL_register(L, nullptr, methods);
+    }
+};
 
-template<> static void AddLinSpaced<BoolMatrix> (lua_State *) {}
+template<> struct AddLinSpaced<BoolMatrix> {
+    AddLinSpaced (lua_State *) {}
+};
 
 // Add Umeyama() for real floating point matrices.
 template<typename M, bool = !Eigen::NumTraits<typename M::Scalar>::IsInteger && !Eigen::NumTraits<typename M::Scalar>::IsComplex> struct AddUmeyama {
@@ -104,6 +108,8 @@ template<typename M> static void AddType (lua_State * L)
 	#if defined(EIGEN_CORE) || defined(EIGEN_PLUGIN_BASIC)
 		lua_newtable(L);// eigen, module
 	#endif
+    
+    typedef typename M::Scalar Scalar;
 
 	luaL_Reg funcs[] = {
 		{
@@ -128,12 +134,12 @@ template<typename M> static void AddType (lua_State * L)
 				BlobXS::State state{L, 1};
 				
 				int m = luaL_checkint(L, 2), n = luaL_optint(L, 3, m);
-				auto memory = state.PointToDataIfBound(L, 0, 0, n, m, 0, sizeof(M::Scalar)); // TODO: might be resizable...
+				auto memory = state.PointToDataIfBound(L, 0, 0, n, m, 0, sizeof(Scalar)); // TODO: might be resizable...
 
 				//
 				if (memory)
 				{
-					Eigen::Map<M> map(reinterpret_cast<M::Scalar *>(memory), m, n);
+					Eigen::Map<M> map(reinterpret_cast<Scalar *>(memory), m, n);
 
 					NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], map
 				}
@@ -141,11 +147,11 @@ template<typename M> static void AddType (lua_State * L)
 				//
 				else
 				{
-					luaL_argcheck(L, !state.Bound() && lua_objlen(L, 1) >= m * n * sizeof(M::Scalar), 1, "Not enough memory for requested dimensions");
+					luaL_argcheck(L, !state.Bound() && lua_objlen(L, 1) >= m * n * sizeof(Scalar), 1, "Not enough memory for requested dimensions");
 
 					const char * str = luaL_checkstring(L, 1);
 
-					Eigen::Map<const M> map(reinterpret_cast<const M::Scalar *>(str), m, n);
+					Eigen::Map<const M> map(reinterpret_cast<const Scalar *>(str), m, n);
 
 					NEW_REF1_DECLTYPE_MOVE("map_bytes", map);	// memory, m[, n], map
 				}

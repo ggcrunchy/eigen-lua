@@ -26,45 +26,65 @@
 #include "types.h"
 #include "views.h"
 
+namespace detail_uv {
+    //
+    template<typename> struct IsRealOp : std::false_type {};
+    template<typename S> struct IsRealOp<Eigen::internal::scalar_real_ref_op<S>> : std::true_type {};
+    
+    template<typename OP, typename LHS, typename RHS> void Assign (LHS & lhs, const RHS * rhs)
+    {
+        if (IsRealOp<OP>::value) lhs = rhs->real();
+        
+        else lhs = rhs->imag();
+    }
+    
+    template<typename OP, typename V, typename R, bool = IsLvalue<V>::value> struct AddWriteOps {
+        using Getters = InstanceGetters<Eigen::CwiseUnaryView<OP, V>, R>;
+
+        AddWriteOps (lua_State * L)
+        {
+            using Real = typename Eigen::NumTraits<typename R::Scalar>::Real;
+        
+            luaL_Reg methods[] = {
+                "assign", [](lua_State * L)
+                {
+                    #define CALL_IF(RHS) if (HasType<RHS>(L, 2)) Assign<OP>(*Getters::GetT(L), LuaXS::UD<RHS>(L, 2))
+                    #define WRAP2(T, A, B) T<A, B>
+
+                    CALL_IF(WRAP2(Eigen::CwiseUnaryView, OP, V));
+                    else CALL_IF(WRAP2(Eigen::CwiseUnaryOp, OP, const V));
+                    else CALL_IF(R);
+                    else
+                    {
+                        MatrixOf<Real> result;
+                    
+                        Assign<OP>(*Getters::GetT(L), SetTemp(L, &result, 2));
+                    }
+                
+                    #undef CALL_IF
+                    #undef WRAP2
+                    
+                    return 0;
+                },
+                { nullptr, nullptr }
+            };
+        
+            luaL_register(L, nullptr, methods);
+        }
+    };
+    
+    template<typename OP, typename V, typename R> struct AddWriteOps<OP, V, R, false> {
+        AddWriteOps (lua_State *) {}
+    };
+}
+
 /*********************
 * Unary view methods *
 *********************/
-template<typename OP, typename V, typename R> struct AttachMethods<Eigen::CwiseUnaryView<OP, V>, R> : InstanceGetters<Eigen::CwiseUnaryView<OP, V>, R> {
-	//
-	template<typename = OP> struct IsRealOp : std::false_type {};
-	template<typename S> struct IsRealOp<Eigen::internal::scalar_real_ref_op<S>> : std::true_type {};
-
-	template<bool = IsLvalue<V>::value> void AddWriteOps (lua_State * L)
-	{
-		using Real = typename Eigen::NumTraits<typename T::Scalar>::Real;
-
-		luaL_Reg methods[] = {
-			"assign", [](lua_State * L)
-			{
-				auto op = IsRealOp<>::value ? &Eigen::CwiseUnaryView<OP, V>::real : &Eigen::CwiseUnaryView<OP, V>::imag;
-
-				if (HasType<Eigen::CwiseUnaryView<OP, V>>(L, 2)) *GetT(L) = (LuaXS::UD<Eigen::CwiseUnaryView<OP, V>>(L, 2)->*op)();
-				else if (HasType<Eigen::CwiseUnaryOp<OP, const V>>(L, 2)) *GetT(L) = (LuaXS::UD<Eigen::CwiseUnaryOp<OP, const V>>(L, 2)->*op)();
-				else if (HasType<R>(L, 2)) *GetT(L) = (LuaXS::UD<R>(L, 2)->*op)();
-				else
-				{																								
-					MatrixOf<Real> result;
-
-					*GetT(L) = (SetTemp(L, &result, 2)->*op)();
-				}		
-
-				return 0;
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
-
-	template<> void AddWriteOps<false> (lua_State *) {}
+template<typename OP, typename V, typename R> struct AttachMethods<Eigen::CwiseUnaryView<OP, V>, R> {
 
 	AttachMethods (lua_State * L)
 	{
-		AddWriteOps(L);
+        detail_uv::AddWriteOps<OP, V, R> awo{L};
 	}
 };

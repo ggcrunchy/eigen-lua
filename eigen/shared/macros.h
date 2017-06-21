@@ -24,81 +24,81 @@
 #pragma once
 
 //
-#define EIGEN_REL_OP(OP)	return WithArray(L, [L](const ArrayType & arr) {						\
-								if (!HasType<T>(L, 2))												\
-								{																	\
-									ArgObjectR<R> ao{L, 2};											\
-																									\
-									if (ao.mObject) New<BoolMatrix>(L, arr OP ao.mObject->array());	\
-									else New<BoolMatrix>(L, arr OP ao.mScalar);						\
-								}																	\
-																									\
-								else New<BoolMatrix>(L, arr OP GetR(L, 2).array());					\
+#define EIGEN_REL_OP(OP)	return Getters::WithArray(L, [L](const ArrayType & arr) {               \
+								if (!HasType<T>(L, 2))                                              \
+								{                                                                   \
+									ArgObjectR<R> ao{L, 2};                                         \
+                                                                                                    \
+									if (ao.mObject) New<BoolMatrix>(L, arr OP ao.mObject->array()); \
+									else New<BoolMatrix>(L, arr OP ao.mScalar);                     \
+								}                                                                   \
+                                                                                                    \
+								else New<BoolMatrix>(L, arr OP Getters::GetR(L, 2).array());        \
 							})
 							
 //
-#define EIGEN_AS_ARRAY(METHOD)	return WithArray(L, [L](const ArrayType & arr) {	\
-									New<R>(L, arr.METHOD());						\
+#define EIGEN_AS_ARRAY(METHOD)	return Getters::WithArray(L, [L](const ArrayType & arr) {	\
+									New<R>(L, arr.METHOD());                                \
 								})
 
 //
-#define EIGEN_AS_ARRAY_BOOL(METHOD)	return WithArray(L, [L](const ArrayType & arr) {	\
-										New<BoolMatrix>(L, arr.METHOD());				\
+#define EIGEN_AS_ARRAY_BOOL(METHOD)	return Getters::WithArray(L, [L](const ArrayType & arr) {	\
+										New<BoolMatrix>(L, arr.METHOD());                       \
 									})
 
 //
-#define EIGEN_MATRIX_GET_MATRIX(METHOD)	return NewRet<R>(L, GetT(L)->METHOD())
+#define EIGEN_MATRIX_GET_MATRIX(METHOD)	return NewRet<R>(L, Getters::GetT(L)->METHOD())
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_COUNT(METHOD)	return NewRet<R>(L, GetT(L)->METHOD(LuaXS::Int(L, 2)))
+#define EIGEN_MATRIX_GET_MATRIX_COUNT(METHOD)	return NewRet<R>(L, Getters::GetT(L)->METHOD(LuaXS::Int(L, 2)))
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR(METHOD)	return NewRet<R>(L, GetT(L)->METHOD(LuaXS::Int(L, 2), LuaXS::Int(L, 3)))
+#define EIGEN_MATRIX_GET_MATRIX_COUNT_PAIR(METHOD)	return NewRet<R>(L, Getters::GetT(L)->METHOD(LuaXS::Int(L, 2), LuaXS::Int(L, 3)))
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_INDEX(METHOD)	return NewRet<R>(L, GetT(L)->METHOD(LuaXS::Int(L, 2) - 1))
+#define EIGEN_MATRIX_GET_MATRIX_INDEX(METHOD)	return NewRet<R>(L, Getters::GetT(L)->METHOD(LuaXS::Int(L, 2) - 1))
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_INDEX_PAIR(METHOD)	return NewRet<R>(L, GetT(L)->METHOD(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1))
+#define EIGEN_MATRIX_GET_MATRIX_INDEX_PAIR(METHOD)	return NewRet<R>(L, Getters::GetT(L)->METHOD(LuaXS::Int(L, 2) - 1, LuaXS::Int(L, 3) - 1))
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_MATRIX_PAIR(METHOD)	return NewRet<R>(L, GetT(L)->METHOD(GetR(L, 2)))
+#define EIGEN_MATRIX_GET_MATRIX_MATRIX_PAIR(METHOD)	return NewRet<R>(L, Getters::GetT(L)->METHOD(Getters::GetR(L, 2)))
 
 //
-#define EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR(METHOD)	ArgObjectR<R> ao{L, 2};												\
-																																		\
-																	if (ao.mObject) return NewRet<R>(L, GetT(L)->METHOD(*ao.mObject));	\
-																	else return NewRet<R>(L, GetT(L)->METHOD(ao.mScalar))
+#define EIGEN_MATRIX_GET_MATRIX_SECOND_IS_MATRIX_OR_SCALAR(METHOD)	ArgObjectR<R> ao{L, 2};                                                     \
+                                                                                                                                                \
+																	if (ao.mObject) return NewRet<R>(L, Getters::GetT(L)->METHOD(*ao.mObject)); \
+																	else return NewRet<R>(L, Getters::GetT(L)->METHOD(ao.mScalar))
 
 //
-#define EIGEN_MATRIX_PAIR_VOID(METHOD)	GetT(L)->METHOD(GetR(L, 2));\
-																	\
+#define EIGEN_MATRIX_PAIR_VOID(METHOD)	Getters::GetT(L)->METHOD(Getters::GetR(L, 2));  \
+                                                                                        \
 										return 0
 //
-#define EIGEN_MATRIX_SET_SCALAR(METHOD)	GetT(L)->METHOD(AsScalar<R>(L, 2));	\
-																			\
+#define EIGEN_MATRIX_SET_SCALAR(METHOD)	Getters::GetT(L)->METHOD(AsScalar<R>(L, 2));\
+                                                                                    \
 										return 0
 
 //
-#define EIGEN_MATRIX_SET_SCALAR_CHAIN(METHOD)	GetT(L)->METHOD(AsScalar<R>(L, 2));	\
-																					\
+#define EIGEN_MATRIX_SET_SCALAR_CHAIN(METHOD)	Getters::GetT(L)->METHOD(AsScalar<R>(L, 2));\
+                                                                                            \
 												return SelfForChaining(L)
 
 //
-#define EIGEN_MATRIX_PUSH_VALUE(METHOD)	return LuaXS::PushArgAndReturn(L, GetT(L)->METHOD())
+#define EIGEN_MATRIX_PUSH_VALUE(METHOD)	return LuaXS::PushArgAndReturn(L, Getters::GetT(L)->METHOD())
 
 //
-#define EIGEN_MATRIX_VOID(METHOD)		GetT(L)->METHOD();	\
-															\
+#define EIGEN_MATRIX_VOID(METHOD)		Getters::GetT(L)->METHOD(); \
+                                                                    \
 										return 0
 
 //
-#define EIGEN_MATRIX_CHAIN(METHOD)		GetT(L)->METHOD();			\
+#define EIGEN_MATRIX_CHAIN(METHOD)		Getters::GetT(L)->METHOD();	\
 																	\
 										return SelfForChaining(L)
 
 //
-#define USING_COMPLEX_TYPE() using ComplexType = MatrixOf<std::complex<R::Scalar>>
+#define USING_COMPLEX_TYPE() using ComplexType = MatrixOf<std::complex<typename R::Scalar>>
 #define GET_COMPLEX_TYPE_DATA()	auto td = TypeData<ComplexType>::Get(L);							\
 																									\
 								luaL_argcheck(L, td, 1, "Complex matrix type unavailable for cast")
@@ -112,17 +112,17 @@
 								return 1
 
 //
-#define EIGEN_REAL_GET_COMPLEX(METHOD)	GET_COMPLEX_TYPE_DATA();			\
-																			\
-										ComplexType res = GetT(L)->METHOD();\
-																			\
+#define EIGEN_REAL_GET_COMPLEX(METHOD)	GET_COMPLEX_TYPE_DATA();                        \
+                                                                                        \
+										ComplexType res = Getters::GetT(L)->METHOD();   \
+                                                                                        \
 										PUSH_TYPED_DATA(res)
 
 //
 // TODO: too fragile? autos like this lead to surprises :/ (thinking of going with proxies or tags)
-#define EIGEN_PUSH_AUTO_RESULT(METHOD)	auto res = GetT(L)->METHOD();			\
-																				\
-										return NewRet<decltype(res)>(L, res)
+#define EIGEN_PUSH_AUTO_RESULT(METHOD)  auto res = Getters::GetT(L)->METHOD();  \
+                                                                                \
+                                        return NewRet<decltype(res)>(L, res)
 
 // Helper to package a name and method body as a luaL_Reg.
 #define EIGEN_REG(NAME, CALL)	#NAME, [](lua_State * L)	\

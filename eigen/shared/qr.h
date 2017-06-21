@@ -27,6 +27,8 @@
 
 //
 template<typename U, typename R> struct QRMethodsBase : SolverMethodsBase<U, R> {
+    using Getters = InstanceGetters<U, R>;
+
 	QRMethodsBase (lua_State * L)
 	{
 		luaL_Reg methods[] = {
@@ -48,6 +50,8 @@ template<typename U, typename R> struct QRMethodsBase : SolverMethodsBase<U, R> 
 * HouseholderQR methods *
 ************************/
 template<typename U, typename R> struct AttachMethods<Eigen::HouseholderQR<U>, R> : QRMethodsBase<Eigen::HouseholderQR<U>, R> {
+    using Getters = InstanceGetters<Eigen::HouseholderQR<U>, R>;
+
 	AttachMethods (lua_State * L) : QRMethodsBase<Eigen::HouseholderQR<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
@@ -69,7 +73,7 @@ SOLVER_TYPE_NAME(HouseholderQR);
 template<typename U, typename R> struct QRExMethodsBase : QRMethodsBase<U, R> {
 	QRExMethodsBase (lua_State * L) : QRMethodsBase<U, R>(L)
 	{
-		QRExtensions(L);
+        QRMethodsBase<U, R>::template QRExtensions(L);
 	}
 };
 
@@ -77,6 +81,8 @@ template<typename U, typename R> struct QRExMethodsBase : QRMethodsBase<U, R> {
 * ColPivHouseholderQR methods *
 ******************************/
 template<typename U, typename R> struct AttachMethods<Eigen::ColPivHouseholderQR<U>, R> : QRExMethodsBase<Eigen::ColPivHouseholderQR<U>, R> {
+    using Getters = InstanceGetters<Eigen::ColPivHouseholderQR<U>, R>;
+
 	AttachMethods (lua_State * L) : QRExMethodsBase<Eigen::ColPivHouseholderQR<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
@@ -102,13 +108,15 @@ SOLVER_TYPE_NAME(ColPivHouseholderQR);
 * CompleteOrthogonalDecomposition methods *
 ******************************************/
 template<typename U, typename R> struct AttachMethods<Eigen::CompleteOrthogonalDecomposition<U>, R> : QRExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R> {
+    using Getters = InstanceGetters<Eigen::CompleteOrthogonalDecomposition<U>, R>;
+
 	AttachMethods (lua_State * L) : QRExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
 			{
 				EIGEN_MATRIX_GET_MATRIX_METHOD(householderQ)
 			}, {
-				"info", Info<>
+                "info", QRExMethodsBase<Eigen::CompleteOrthogonalDecomposition<U>, R>::template Info<>
 			}, {
 				EIGEN_MATRIX_GET_MATRIX_METHOD(matrixQTZ)
 			}, {
@@ -131,6 +139,8 @@ SOLVER_TYPE_NAME(CompleteOrthogonalDecomposition);
 * FullPivHouseholderQR methods *
 *******************************/
 template<typename U, typename R> struct AttachMethods<Eigen::FullPivHouseholderQR<U>, R> : QRExMethodsBase<Eigen::FullPivHouseholderQR<U>, R> {
+    using Getters = InstanceGetters<Eigen::FullPivHouseholderQR<U>, R>;
+
 	AttachMethods (lua_State * L) : QRExMethodsBase<Eigen::FullPivHouseholderQR<U>, R>(L)
 	{
 		luaL_Reg methods[] = {
@@ -147,7 +157,7 @@ template<typename U, typename R> struct AttachMethods<Eigen::FullPivHouseholderQ
 
 					luaL_argcheck(L, td, 2, "rowsTranspositions() requires int matrices");
 
-					Eigen::MatrixXi im = GetT(L)->rowsTranspositions();
+                    Eigen::MatrixXi im = Getters::GetT(L)->rowsTranspositions().template cast<int>();
 
 					PUSH_TYPED_DATA(im);
 				}

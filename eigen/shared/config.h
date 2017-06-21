@@ -26,13 +26,13 @@
 #if defined(EIGEN_CORE)
 	#define PLUGIN_SUFFIX eigencore
 	#define PLUGIN_NAME luaopen_plugin_eigencore
-//	#define WANT_MAP
+	#define WANT_MAP
 #elif defined(EIGEN_INT_ONLY)
 	#define PLUGIN_SUFFIX eigenint
 	#define PLUGIN_NAME luaopen_plugin_eigenint
 
 	#define WANT_INT
-//	#define WANT_MAP
+	#define WANT_MAP
 #elif defined(EIGEN_FLOAT_ONLY)
 	#define PLUGIN_SUFFIX eigenfloat
 	#define PLUGIN_NAME luaopen_plugin_eigenfloat
@@ -44,7 +44,7 @@
 	#define PLUGIN_NAME luaopen_plugin_eigendouble
 
 	#define WANT_DOUBLE
-//	#define WANT_MAP
+	#define WANT_MAP
 #elif defined(EIGEN_CFLOAT_ONLY)
 	#define PLUGIN_SUFFIX eigencfloat
 	#define PLUGIN_NAME luaopen_plugin_eigencfloat

@@ -28,70 +28,84 @@
 #include "macros.h"
 #include "solvers.h"
 
+// Conditionally add certain solvers according to whether the matrix is complex.
+template<typename T, typename R, bool = Eigen::NumTraits<typename T::Scalar>::IsComplex> struct IgnoreWhenComplex {
+    using Getters = InstanceGetters<T, R>;
+
+    IgnoreWhenComplex (lua_State * L)
+    {
+        typedef typename Getters::RefType RefType; // Visual Studio workaround
+
+        luaL_Reg methods[] = {
+            {
+                "eigenSolver", [](lua_State * L)
+                {
+                    return Getters::WithRef(L, [L](const RefType & ref) {
+                        NewRvalue<Eigen::ComplexEigenSolver<R>>(L, ref, !WantsBool(L, "NoEigenvectors"));
+                    });
+                }
+            }, {
+                "schur", [](lua_State * L)
+                {
+                    return Getters::WithRef(L, [L](const RefType & ref) {
+                        NewRvalue<Eigen::ComplexSchur<R>>(L, ref, !WantsBool(L, "NoU"));
+                    });
+                }
+            },
+            { nullptr, nullptr }
+        };
+    
+        luaL_register(L, nullptr, methods);
+    }
+};
+
+template<typename T, typename R> struct IgnoreWhenComplex<T, R, false> {
+    using Getters = InstanceGetters<T, R>;
+    
+    IgnoreWhenComplex (lua_State * L)
+    {
+        typedef typename Getters::RefType RefType; // Visual Studio workaround
+
+        luaL_Reg methods[] = {
+            {
+                "eigenSolver", [](lua_State * L)
+                {
+                    return Getters::WithRef(L, [L](const RefType & ref) {
+                        NewRvalue<Eigen::EigenSolver<R>>(L, ref, !WantsBool(L, "NoEigenvectors"));
+                    });
+                }
+            }, {
+                "generalizedEigenSolver", [](lua_State * L)
+                {
+                    return Getters::WithRef(L, [L](const RefType & ref) {
+                        NewRvalue<Eigen::GeneralizedEigenSolver<R>>(L, ref, Getters::GetR(L, 2), !WantsBool(L, "NoEigenvectors"));
+                    });
+                }
+            }, {
+                "realQz", [](lua_State * L)
+                {
+                    return Getters::WithRef(L, [L](const RefType & ref) {
+                        NewRvalue<Eigen::RealQZ<R>>(L, ref, Getters::GetR(L, 2), !WantsBool(L, "NoQZ"));
+                    });
+                }
+            }, {
+                "schur", [](lua_State * L)
+                {
+                    return Getters::WithRef(L, [L](const RefType & ref) {
+                        NewRvalue<Eigen::RealSchur<R>>(L, ref, !WantsBool(L, "NoU"));
+                    });
+                }
+            },
+            { nullptr, nullptr }
+        };
+    
+        luaL_register(L, nullptr, methods);
+    }
+};
+
 // Methods assigned to matrices with non-integer types.
-template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger> struct SolverOps : InstanceGetters<T, R> { 
-	// Conditionally add certain solvers according to whether the matrix is complex.
-	template<bool = Eigen::NumTraits<T::Scalar>::IsComplex> void IgnoreWhenComplex (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"eigenSolver", [](lua_State * L)
-				{
-					return WithRef(L, [L](const RefType & ref) {
-						NewRvalue<Eigen::ComplexEigenSolver<R>>(L, ref, !WantsBool(L, "NoEigenvectors"));
-					});
-				}
-			}, {
-				"schur", [](lua_State * L)
-				{
-					return WithRef(L, [L](const RefType & ref) {
-						NewRvalue<Eigen::ComplexSchur<R>>(L, ref, !WantsBool(L, "NoU"));
-					});
-				}
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
-
-	template<> void IgnoreWhenComplex<false> (lua_State * L)
-	{
-		luaL_Reg methods[] = {
-			{
-				"eigenSolver", [](lua_State * L)
-				{
-					return WithRef(L, [L](const RefType & ref) {
-						NewRvalue<Eigen::EigenSolver<R>>(L, ref, !WantsBool(L, "NoEigenvectors"));
-					});
-				}
-			}, {
-				"generalizedEigenSolver", [](lua_State * L)
-				{
-					return WithRef(L, [L](const RefType & ref) {
-						NewRvalue<Eigen::GeneralizedEigenSolver<R>>(L, ref, GetR(L, 2), !WantsBool(L, "NoEigenvectors"));
-					});
-				}
-			}, {
-				"realQz", [](lua_State * L)
-				{
-					return WithRef(L, [L](const RefType & ref) {
-						NewRvalue<Eigen::RealQZ<R>>(L, ref, GetR(L, 2), !WantsBool(L, "NoQZ"));
-					});
-				}
-			}, {
-				"schur", [](lua_State * L)
-				{
-					return WithRef(L, [L](const RefType & ref) {
-						NewRvalue<Eigen::RealSchur<R>>(L, ref, !WantsBool(L, "NoU"));
-					});
-				}
-			},
-			{ nullptr, nullptr }
-		};
-
-		luaL_register(L, nullptr, methods);
-	}
+template<typename T, typename R, bool = !Eigen::NumTraits<typename T::Scalar>::IsInteger> struct SolverOps {
+    using Getters = InstanceGetters<T, R>;
 
 	// Helper to supply options to SVD solvers.
 	static unsigned int GetOpts (lua_State * L)
@@ -112,25 +126,27 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 
 	SolverOps (lua_State * L)
 	{
-		luaL_Reg methods[] = {
+        typedef typename Getters::RefType RefType; // Visual Studio workaround
+        
+        luaL_Reg methods[] = {
 			{
 				"bdcSvd", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						New<Eigen::BDCSVD<R>>(L, ref.bdcSvd(lua_istable(L, 2) ? GetOpts(L) : 0U));
 					});
 				}
 			}, {
 				"colPivHouseholderQr", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						New<Eigen::ColPivHouseholderQR<R>>(L, ref.colPivHouseholderQr());
 					});
 				}
 			}, {
 				"completeOrthogonalDecomposition", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						New<Eigen::CompleteOrthogonalDecomposition<R>>(L, ref.completeOrthogonalDecomposition());
 					});
 				}
@@ -139,21 +155,21 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"fullPivHouseholderQr", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						New<Eigen::FullPivHouseholderQR<R>>(L, ref.fullPivHouseholderQr());
 					});
 				}
 			}, {
 				"fullPivLu", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						New<Eigen::FullPivLU<R>>(L, ref.fullPivLu());
 					});
 				}
 			}, {
 				"generalizedSelfAdjointEigenSolver", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						auto compute = Eigen::ComputeEigenvectors;
 						auto method = Eigen::Ax_lBx;
 
@@ -171,21 +187,21 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 							method = methods[luaL_checkoption(L, -1, "", names)];
 						}
 
-						NewRvalue<Eigen::GeneralizedSelfAdjointEigenSolver<R>>(L, ref, GetR(L, 2), compute | method);
+                        NewRvalue<Eigen::GeneralizedSelfAdjointEigenSolver<R>>(L, ref, Getters::GetR(L, 2), compute | method);
 					});
 				}
 			}, {
 				"hessenbergDecomposition", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						NewRvalue<Eigen::HessenbergDecomposition<R>>(L, ref);
 					});
 				}
 			}, {
 				"householderQr", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
-						New<Eigen::HouseholderQR<R>>(L, ref.householderQr());
+					return Getters::WithRef(L, [L](const RefType & ref) {
+                        New<Eigen::HouseholderQR<R>>(L, ref.householderQr());
 					});
 				}
 			}, {
@@ -193,7 +209,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"jacobiSvd", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						unsigned int opts = 0U;
 
 						if (lua_istable(L, 2))
@@ -225,7 +241,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 					lua_settop(L, 2);	// mat, how?
 					lua_pushliteral(L, "upper");// mat[, how], "upper"
 
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						if (!lua_equal(L, 2, 3)) New<Eigen::LDLT<R, Eigen::Lower>>(L, ref.ldlt());
 						else NewRvalue<Eigen::LDLT<R, Eigen::Upper>>(L, ref);
 					});
@@ -236,7 +252,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 					lua_settop(L, 2);	// mat, how?
 					lua_pushliteral(L, "upper");// mat[, how], "upper"
 
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						if (!lua_equal(L, 2, 3)) New<Eigen::LLT<R, Eigen::Lower>>(L, ref.llt());
 						else NewRvalue<Eigen::LLT<R, Eigen::Upper>>(L, ref);
 					});
@@ -244,7 +260,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"partialPivLu", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						New<Eigen::PartialPivLU<R>>(L, ref.partialPivLu());
 					});
 				}
@@ -253,7 +269,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"selfAdjointEigenSolver", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						auto opts = WantsBool(L, "NoEigenvectors") ? Eigen::EigenvaluesOnly : Eigen::ComputeEigenvectors;
 
 						NewRvalue<Eigen::SelfAdjointEigenSolver<R>>(L, ref, opts);
@@ -262,7 +278,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 			}, {
 				"tridiagonalization", [](lua_State * L)
 				{
-					return WithRef(L, [L](const RefType & ref) {
+					return Getters::WithRef(L, [L](const RefType & ref) {
 						NewRvalue<Eigen::Tridiagonalization<R>>(L, ref);
 					});
 				}
@@ -274,7 +290,7 @@ template<typename T, typename R, bool = !Eigen::NumTraits<T::Scalar>::IsInteger>
 		lua_getfield(L, -1, "partialPivLu");// methods, pplu
 		lua_setfield(L, -2, "lu");	// methods = { lu = pplu }
 
-		IgnoreWhenComplex(L);
+        IgnoreWhenComplex<T, R> iwc{L};
 	}
 };
 
